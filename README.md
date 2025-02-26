@@ -6,7 +6,7 @@
 
 [Installation](#installation) | [Basic usage](#basic_usage) 
 
-Pre-trained UQ heads -- supervised auxiliary modules for LLMs that substantially enhance their ability to capture uncertainty. A powerful Transformer architecture in their design and informative features derived from LLM attention maps enable strong performance, as well as cross-lingual and cross-domain generalization.![image](https://github.com/user-attachments/assets/b4a5c867-f3d6-4b60-9a5d-5fbc2a06954d)
+Pre-trained UQ heads -- supervised auxiliary modules for LLMs that substantially enhance their ability to capture uncertainty. A powerful Transformer architecture in their design and informative features derived from LLM attention maps enable strong performance, as well as cross-lingual and cross-domain generalization.
 
 ## Installation
 
