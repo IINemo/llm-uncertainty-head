@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-uncertainty-head"
+version = "0.0.0"
+authors = [
+  { name = "List of contributors: https://github.com/IINemo/llm-uncertainty-head/graphs/contributors", email = "artemshelmanov@gmail.com" },
+]
+description = "Pre-trained uncertainty quantification heads for LLMs"
+readme = "README.md"
+
+keywords=["NLP", "deep learning", "transformer", "pytorch", "uncertainty quantification"]
+license = {file = "LICENSE.md"}
+
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Education",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/IINemo/llm-uncertainty-head"
+"Bug Tracker" = "https://github.com/IINemo/llm-uncertainty-head/issues"
+"Repository" = "https://github.com/IINemo/llm-uncertainty-head"
+
+[tool.setuptools]
+script-files = []
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
