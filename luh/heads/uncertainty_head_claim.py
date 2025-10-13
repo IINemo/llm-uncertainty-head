@@ -18,8 +18,11 @@ class UncertaintyHeadClaim(UncertaintyHeadBase):
         n_heads: int = 8,
         dropout: float = 0.1,
         cfg = None,  # Temporary we save initializing cfg in the head itself
+        mask_future_tokens: bool = False,
     ):
         super().__init__(feature_extractor, cfg=cfg, model_type="claim")
+
+        self.mask_future_tokens = mask_future_tokens
 
         self.feature_extractor = feature_extractor
         log.info(f"Feature size: {feature_extractor.feature_dim()}")
@@ -72,7 +75,15 @@ class UncertaintyHeadClaim(UncertaintyHeadBase):
             #pos_embeds = self.position_embedding(positions)
             
             out = features[i].unsqueeze(0).repeat(ent_embeds.shape[0], 1, 1) + ent_embeds # + pos_embeds.repeat(ent_embeds.shape[0], 1, 1)
-            out = self.transformer_encoder(out, src_key_padding_mask=src_key_padding_mask[i].unsqueeze(0).repeat(ent_embeds.shape[0], 1))
+            src_key_pd = src_key_padding_mask[i].unsqueeze(0).repeat(ent_embeds.shape[0], 1)
+
+            assert entity_mask.shape == src_key_pd.shape
+            if self.mask_future_tokens:
+                cumulative_mask = torch.flip(torch.cummax(torch.flip(entity_mask.int(), dims=[1]), dim=1)[0], dims=[1]).bool()
+                # log.debug(f'Masking future tokens in: {src_key_pd} by {entity_mask} entity mask: {src_key_pd & cumulative_mask}')
+                src_key_pd &= cumulative_mask
+            
+            out = self.transformer_encoder(out, src_key_padding_mask=src_key_pd)
             
             sum_entity_embeds = (out * entity_mask.unsqueeze(-1)).sum(dim=1)  
             count_entity_tokens = entity_mask.sum(dim=1).clamp(min=1)
