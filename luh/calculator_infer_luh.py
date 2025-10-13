@@ -263,7 +263,7 @@ class CalculatorInferLuh(StatCalculator):
                 do_sample=False,
                 suppress_tokens=(
                     []
-                    if model.generation_parameters.allow_newlines
+                    if getattr(model.generation_parameters, "allow_newlines", True)
                     else [
                         t
                         for t in range(len(model.tokenizer))
