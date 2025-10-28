@@ -230,6 +230,11 @@ class CalculatorInferLuh(StatCalculator):
         max_new_tokens: int = 100,  # TODO: move to args_generate
         **kwargs,
     ) -> Dict[str, np.ndarray]:
+        if "num_return_sequences" in kwargs:
+            num_return_sequences = kwargs["num_return_sequences"]
+            kwargs.pop("num_return_sequences")
+            texts = [t for t in texts for _ in range(num_return_sequences)]
+
         cache = None
         if self.generations_cache_dir is not None:
             cache = DiskCache(
@@ -248,33 +253,32 @@ class CalculatorInferLuh(StatCalculator):
             batch = texts
 
         device_batch = batch.to(model.device())
-        log.info(f"Generating {max_new_tokens} new tokens on device={model.device()}...")
         start_time = time.time()
+
+        gen_args = {
+            "output_scores": True,
+            "return_dict_in_generate": True,
+            "max_new_tokens": max_new_tokens,
+            "min_new_tokens": 2,
+            "output_attentions": self.output_attentions,
+            "output_hidden_states": True,
+            "num_return_sequences": 1,
+            "do_sample": False,
+        }
+        gen_args.update(kwargs)
+
+        log.info(f"Generating on device={model.device()} with args {gen_args}")
+
         with torch.no_grad():
             out = model.generate(
                 **device_batch,
-                output_scores=True,
-                return_dict_in_generate=True,
-                max_new_tokens=max_new_tokens,
-                min_new_tokens=2,
-                output_attentions=self.output_attentions,
-                output_hidden_states=True,
-                num_return_sequences=1,
-                do_sample=False,
-                suppress_tokens=(
-                    []
-                    if getattr(model.generation_parameters, "allow_newlines", True)
-                    else [
-                        t
-                        for t in range(len(model.tokenizer))
-                        if "\n" in model.tokenizer.decode([t])
-                    ]
-                ),
+                **gen_args,
             )
         log.info(f"Done generating in {round(time.time() - start_time, 2)} seconds")
 
         result_dict = self.postprocess_predictions(batch, out, model.tokenizer)
         result_dict["input_texts"] = texts
+        result_dict["out"] = out
 
         if cache is not None:
             for i in range(len(texts)):

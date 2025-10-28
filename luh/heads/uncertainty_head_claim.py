@@ -70,6 +70,8 @@ class UncertaintyHeadClaim(UncertaintyHeadBase):
 
         for i in range(batch_size):
             entity_mask = claims[i]
+            if len(entity_mask) == 0:
+                continue
             ent_embeds = self.entity_embedding(entity_mask)
             #positions = torch.arange(max_tokens, device=X.device).unsqueeze(0)
             #pos_embeds = self.position_embedding(positions)
@@ -80,9 +82,8 @@ class UncertaintyHeadClaim(UncertaintyHeadBase):
             assert entity_mask.shape == src_key_pd.shape
             if self.mask_future_tokens:
                 cumulative_mask = torch.flip(torch.cummax(torch.flip(entity_mask.int(), dims=[1]), dim=1)[0], dims=[1]).bool()
-                # log.debug(f'Masking future tokens in: {src_key_pd} by {entity_mask} entity mask: {src_key_pd & cumulative_mask}')
+                log.debug(f'Masking future tokens in: {src_key_pd} by {entity_mask} entity mask: {src_key_pd & cumulative_mask}')
                 src_key_pd &= cumulative_mask
-            
             out = self.transformer_encoder(out, src_key_padding_mask=src_key_pd)
             
             sum_entity_embeds = (out * entity_mask.unsqueeze(-1)).sum(dim=1)  
@@ -93,7 +94,7 @@ class UncertaintyHeadClaim(UncertaintyHeadBase):
             results.append(out)
         
         # Padding to ensure uniform output shape
-        max_entities_per_batch = max(o.shape[0] for o in results)
+        max_entities_per_batch = max([o.shape[0] for o in results], default=1)
         padded_results = [F.pad(o, (0, 0, 0, max_entities_per_batch - o.shape[0]), value=-100) for o in results]
         
-        return torch.stack(padded_results)
+        return torch.stack(padded_results) if len(padded_results) else torch.zeros(0)

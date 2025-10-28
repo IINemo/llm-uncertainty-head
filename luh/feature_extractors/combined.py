@@ -1,4 +1,5 @@
 import torch
+import time
 
 from .feature_extractor_base import FeatureExtractorBase
 
@@ -15,7 +16,13 @@ class FeatureExtractorCombined(FeatureExtractorBase):
     def __call__(self, llm_inputs, llm_outputs):
         features = []
         for feature_extractor in self._feature_extractors:
-            features.append(feature_extractor(llm_inputs, llm_outputs))
+            start_time = time.time()
+
+            new_features = feature_extractor(llm_inputs, llm_outputs)
+            if torch.isnan(new_features).sum() != 0:
+                raise Exception(f'Found nans in features from {feature_extractor}: {new_features}')
+            features.append(new_features)
+            log.debug(f"Done extracting {feature_extractor} in {round(time.time() - start_time, 2)} seconds")
 
         return torch.cat(features, dim=-1)
 

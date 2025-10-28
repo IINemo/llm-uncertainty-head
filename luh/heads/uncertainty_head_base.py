@@ -99,9 +99,9 @@ class UncertaintyHeadBase(nn.Module):
         )
         OmegaConf.save(self.cfg, Path(output_dir) / "config.yaml")
 
-    def push_to_hub(self, repo_id: str, token: str = None):
+    def push_to_hub(self, repo_id: str, token: str = None, private: bool = False):
         api = HfApi()
-        api.create_repo(repo_id=repo_id, exist_ok=True, token=token)
+        api.create_repo(repo_id=repo_id, exist_ok=True, token=token, private=private)
 
         # Use a temporary directory for local repository operations
         with tempfile.TemporaryDirectory() as tmpdir:

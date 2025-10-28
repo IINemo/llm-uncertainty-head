@@ -2,6 +2,43 @@ import torch
 
 from .feature_extractor_base import FeatureExtractorBase
 
+def process_attentions(attentions_all, attention_mask, is_training) -> list[tuple]:
+    # Returns: attentions in format (seq_len, layer_num, batch_sz, heads_num, 1, prev_seq_len)
+    layer = 0  # only for tensor shapes
+
+    if is_training:
+        # put zeros in masked positions
+        att_masks = attention_mask
+        for layer_num in range(len(attentions_all)):
+            for i in range(len(attentions_all[layer_num])):
+                attentions_all[layer_num][i, :, att_masks[i] == 0, :] = 0
+
+        return [
+            tuple(
+                attentions_all[l][:, :, i:i + 1, :i + 1]
+                for l in range(len(attentions_all))
+            )
+            for i in range(attentions_all[layer].shape[-1] - 1)
+        ]
+    else:
+        attn_inp = [
+            tuple(
+                attentions_all[0][l][:, :, i:i + 1, :i + 1]
+                for l in range(len(attentions_all[0]))
+            )
+            for i in range(attentions_all[0][layer].shape[-2])
+        ]
+        inp_len = attentions_all[0][layer].shape[-2]
+        outp_len = len(attentions_all[1:])
+        attn_outp = [
+            tuple(
+                a[l][:, :, :, :i + 1]
+                for l in range(len(attentions_all[0]))
+            )
+            for i, a in zip(range(inp_len, inp_len + outp_len), attentions_all[1:])
+        ]
+        return attn_inp + attn_outp
+
 
 class FeatureExtractorLookbackLens(FeatureExtractorBase):
     def __init__(self, orig_base_model, **kwargs):
@@ -9,46 +46,19 @@ class FeatureExtractorLookbackLens(FeatureExtractorBase):
         self._n_heads = orig_base_model.config.num_attention_heads
         self._input_size = self._n_layers * self._n_heads
 
+        from transformers import AutoTokenizer
+        self._tokenizer = AutoTokenizer.from_pretrained('google/gemma-2-9b-it')
+
     def feature_dim(self):
         return self._input_size
 
     def __call__(self, llm_inputs, llm_outputs):
-        attentions_all = llm_outputs.attentions
-
-        is_training = not hasattr(llm_outputs, "sequences")
-        layer = 0  # only for tensor shapes
+        attentions_all = process_attentions(
+            llm_outputs.attentions, llm_inputs['attention_mask'],
+            is_training=not hasattr(llm_outputs, "sequences"),
+        )
         batch_sz = llm_inputs['attention_mask'].shape[0]
-
-        if is_training:
-            context_bounds = torch.as_tensor(llm_outputs.context_lengths, device=attentions_all[0].device)
-            attentions_all = [
-                tuple(
-                    attentions_all[l][:, :, i:i + 1, :i + 1]
-                    for l in range(len(attentions_all))
-                )
-                for i in range(attentions_all[layer].shape[-1] - 1)
-            ]
-        else:
-            context_bounds = torch.tensor(
-                [attentions_all[0][layer].shape[-1] for _ in range(batch_sz)], device=attentions_all[0][0].device)
-            attn_inp = [
-                tuple(
-                    attentions_all[0][l][:, :, i:i + 1, :i + 1]
-                    for l in range(len(attentions_all[0]))
-                )
-                for i in range(attentions_all[0][layer].shape[-2])
-            ]
-            inp_len = attentions_all[0][layer].shape[-2]
-            outp_len = len(attentions_all[1:])
-            attn_outp = [
-                tuple(
-                    a[l][:, :, :, :i + 1]
-                    for l in range(len(attentions_all[0]))
-                )
-                for i, a in zip(range(inp_len, inp_len + outp_len), attentions_all[1:])
-            ]
-            attentions_all = attn_inp + attn_outp
-
+        context_bounds = torch.as_tensor(llm_outputs.context_lengths, device=attentions_all[0][0].device)
         context_lengths = [
             llm_inputs['attention_mask'][i][:context_bounds[i]].sum().item()
             for i in range(batch_sz)

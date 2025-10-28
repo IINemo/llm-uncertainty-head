@@ -3,6 +3,8 @@ from .heads.uncertainty_head import UncertaintyHead
 from .heads.uncertainty_head_claim import UncertaintyHeadClaim
 from .heads.linear_head import LinearHead
 from .heads.linear_head_claim import LinearHeadClaim
+from .heads.mlp_head_claim import MLPClaimHead
+from .heads.uncertainty_head_claim_light import UncertaintyHeadClaimLight
 from .utils import load_feature_extractor
 
 from huggingface_hub import hf_hub_download
@@ -19,6 +21,8 @@ class AutoUncertaintyHead:
         "claim": UncertaintyHeadClaim,
         "linear": LinearHead,
         "linear_claim": LinearHeadClaim,
+        "mlp_claim": MLPClaimHead,
+        "claim_light": UncertaintyHeadClaimLight,
     }
 
     @classmethod

@@ -9,14 +9,26 @@ import logging
 log = logging.getLogger()
 
 
-class LinearHeadClaim(UncertaintyHeadBase):
+
+class MLPClaimHead(UncertaintyHeadBase):
     def __init__(
         self,
         feature_extractor,
+        internal_dim1=256,
+        internal_dim2=128,
+        internal_dim3=64,
         cfg = None,  # Temporary we save initializing cfg in the head itself
     ):
         super().__init__(feature_extractor, cfg=cfg, model_type="claim")
-        self.classifier = nn.Linear(feature_extractor.feature_dim(), 1)
+
+        log.info(f"Feature dim: {feature_extractor.feature_dim()}")
+        self.layers = nn.ModuleList([nn.Linear(feature_extractor.feature_dim(), internal_dim1),
+                                     nn.ReLU(),
+                                     nn.Linear(internal_dim1, internal_dim2),
+                                     nn.ReLU(),
+                                     nn.Linear(internal_dim2, internal_dim3),
+                                     nn.ReLU(),
+                                     nn.Linear(internal_dim3, 1)])
 
     def _compute_tensors(self, llm_inputs, X, X_attn_mask):
         claims = llm_inputs["claims"]
@@ -29,11 +41,19 @@ class LinearHeadClaim(UncertaintyHeadBase):
             if len(entity_mask) == 0:
                 continue
             
-            sum_entity_embeds = (features[i, :] * entity_mask.unsqueeze(-1)).sum(dim=1)  
+            # First process features through MLP
+            batch_features = features[i, :]
+            processed_features = batch_features
+            for layer in self.layers[:-1]:  # Apply all layers except final linear
+                processed_features = layer(processed_features)
+            
+            # Then average across tokens for each claim
+            sum_entity_embeds = (processed_features * entity_mask.unsqueeze(-1)).sum(dim=1)  
             count_entity_tokens = entity_mask.sum(dim=1).clamp(min=1)
             entity_representation = sum_entity_embeds / count_entity_tokens.unsqueeze(-1)
             
-            out = self.classifier(entity_representation)
+            # Final linear layer
+            out = self.layers[-1](entity_representation)
             results.append(out)
         
         # Padding to ensure uniform output shape
