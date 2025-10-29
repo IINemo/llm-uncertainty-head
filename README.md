@@ -64,3 +64,17 @@ CUDA_VISIBLE_DEVICES=0 python -m luh.cli.train.run_train_uhead \
     dataset.path="<path to your dataset, e.g. hf:llm-uncertainty-head/train_akimbio_mistral>" \
     model.pretrained_model_name_or_path="<your model name, e.g.  mistralai/Mistral-7B-Instruct-v0.2>"
 ```
+
+## Cite
+```
+@inproceedings{shelmanov2025head,
+  title        = {A Head to Predict and a Head to Question: Pre-trained Uncertainty Quantification Heads for Hallucination Detection in LLM Outputs},
+  author       = {Shelmanov, Artem and Fadeeva, Ekaterina and Tsvigun, Akim and Tsvigun, Ivan and Xie, Zhuohan and Kiselev, Igor and Daheim, Nico and Zhang, Caiqi and Vazhentsev, Artem and Sachan, Mrinmaya and others},
+  booktitle    = {Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  year         = {2025},
+  address      = {Abu Dhabi, United Arab Emirates},
+  publisher    = {Association for Computational Linguistics},
+  pages        = {to appear},
+  url          = {https://arxiv.org/abs/2505.08200}
+}
+```
