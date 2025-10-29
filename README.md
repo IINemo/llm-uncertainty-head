@@ -58,7 +58,7 @@ output["uncertainty_logits"]
 ## Training
 Training UHead from data from top package directory:
 ```
-CUDA_VISIBLE_DEVICES=0 python -m luh.cli.train.run_train_uhead.py \
+CUDA_VISIBLE_DEVICES=0 python -m luh.cli.train.run_train_uhead \
     --config-dir=./configs \
     --config-name=run_train_uhead.yaml \
     dataset.path="<path to your dataset, e.g. hf:llm-uncertainty-head/train_akimbio_mistral>" \

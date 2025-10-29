@@ -34,8 +34,9 @@ from transformers import (
 )
 from transformers import logging as transformers_logging
 
-from causal_lm_with_uncertainty_layer import CausalLMWithUncertaintyLayer
-from causal_lm_with_uncertainty_layer_claim import CausalLMWithUncertaintyLayerClaim
+from .causal_lm_with_uncertainty_layer import CausalLMWithUncertaintyLayer
+from .causal_lm_with_uncertainty_layer_claim import CausalLMWithUncertaintyLayerClaim
+
 from luh.utils import load_any_dataset
 from luh import AutoUncertaintyHead
 

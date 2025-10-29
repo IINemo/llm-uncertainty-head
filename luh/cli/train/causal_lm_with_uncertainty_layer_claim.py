@@ -5,7 +5,7 @@ from torch.nn import BCEWithLogitsLoss
 
 from itertools import chain
 
-from causal_lm_with_uncertainty_layer import CausalLMWithUncertaintyOutput
+from .causal_lm_with_uncertainty_layer import CausalLMWithUncertaintyOutput
 
 
 class CausalLMWithUncertaintyLayerClaim(PreTrainedModel):

@@ -12,7 +12,7 @@ description = "Pre-trained uncertainty quantification heads for LLMs"
 readme = "README.md"
 
 keywords=["NLP", "deep learning", "transformer", "pytorch", "uncertainty quantification"]
-license = {file = "LICENSE.md"}
+license = {file = "LICENSE"}
 
 requires-python = ">=3.11"
 dynamic = ["dependencies"]
@@ -37,6 +37,11 @@ classifiers = [
 
 [tool.setuptools]
 script-files = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["luh*"]
+exclude = ["workdir*", "configs*", "benchmark_multilingual*", "tests*", "examples*"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
