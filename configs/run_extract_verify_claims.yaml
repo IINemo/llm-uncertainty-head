@@ -1,0 +1,24 @@
+hydra:
+  run:
+    dir: ${output_dir}/extract_verify/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+dataset:
+  path: "hf:llm-uncertainty-head/train_akimbio_mistral"
+  num_instances: 0
+
+tokenizer: mistralai/Mistral-7B-Instruct-v0.2
+
+claim_extractor:
+  openai_model: "gpt-4o"
+  n_threads: 8
+
+claim_annotator:
+  openai_model: "gpt-4o"
+  n_threads: 8
+  llm_url: 
+
+language: "en"
+
+cache_path: "./workdir/cache"
+output_dir: ./workdir
+drop_annotations: true

@@ -1,0 +1,24 @@
+hydra:
+  run:
+    dir: ${output_dir}/generated_texts/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+model:
+  pretrained_model_name_or_path: mistralai/Mistral-7B-Instruct-v0.2
+  # meta-llama/Meta-Llama-3.1-8B-Instruct
+  device_map: cuda
+
+dataset:
+  path: hf:llm-uncertainty-head/train_akimbio_mistral
+  num_instances: 0
+
+generation:
+  temperature: 0.
+  max_new_tokens: 256
+  do_sample: false
+  repetition_penalty: 1.
+  diversity_penalty: 0.
+  length_penalty: 1.
+
+
+enable_vllm: false
+output_dir: ./workdir

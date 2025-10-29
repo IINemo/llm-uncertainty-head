@@ -21,7 +21,9 @@ pip install git+https://github.com/IINemo/llm-uncertainty-head.git
 
 ```python
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from luh import AutoUncertaintyHead, CausalLMWithUncertainty
+from luh import AutoUncertaintyHead
+
+from lm_polygraph import CausalLMWithUncertainty
 
 
 model_name = "mistralai/Mistral-7B-Instruct-v0.2"
@@ -51,4 +53,14 @@ inputs = tokenizer(chat_messages, return_tensors="pt", padding=True, truncation=
 
 output = llm_adapter.generate(inputs)
 output["uncertainty_logits"]
+```
+
+## Training
+Training UHead from data from top package directory:
+```
+CUDA_VISIBLE_DEVICES=0 python -m luh.cli.train.run_train_uhead.py \
+    --config-dir=./configs \
+    --config-name=run_train_uhead.yaml \
+    dataset.path="<path to your dataset, e.g. hf:llm-uncertainty-head/train_akimbio_mistral>" \
+    model.pretrained_model_name_or_path="<your model name, e.g.  mistralai/Mistral-7B-Instruct-v0.2>"
 ```
