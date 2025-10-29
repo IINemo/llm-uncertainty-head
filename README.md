@@ -1,9 +1,9 @@
+# LLM Uncertainty Head
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/IINemo/llm-uncertainty-head/blob/master/LICENSE)
 ![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97-Pretrained-yellow)](https://huggingface.co/llm-uncertainty-head)
 
-
-# LLM Uncertainty Head
 
 [Installation](#installation) | [Basic usage](#basic_usage) 
 
