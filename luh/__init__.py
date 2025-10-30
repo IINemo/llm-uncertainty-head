@@ -1,4 +1,3 @@
 from .luh_claim_estimator import LuhClaimEstimator
 from .calculator_infer_luh import CalculatorInferLuh
 from .auto_uncertainty_head import AutoUncertaintyHead
-from .causal_lm_with_uncertainty import CausalLMWithUncertainty
