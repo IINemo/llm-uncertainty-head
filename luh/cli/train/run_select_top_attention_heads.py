@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from datasets import load_dataset
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
 
 from luh.feature_extractors import FeatureExtractorBasicAttention
 
@@ -13,11 +13,6 @@ from luh.feature_extractors import FeatureExtractorBasicAttention
 def main(args):
     ds = load_dataset(args.dataset)['train']
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.model_path,
-        model_max_length=2400,
-        padding_side="left",
-    )
     model = AutoModelForCausalLM.from_pretrained(
         args.model_path,
         torch_dtype=torch.float16,
