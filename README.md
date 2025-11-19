@@ -25,6 +25,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from luh import AutoUncertaintyHead
 
 from lm_polygraph import CausalLMWithUncertainty
+from luh.calculator_infer_luh import CalculatorInferLuh
+from luh.luh_estimator_dummy import LuhEstimatorDummy
 
 
 model_name = "mistralai/Mistral-7B-Instruct-v0.2"
@@ -37,23 +39,35 @@ tokenizer = AutoTokenizer.from_pretrained(
 tokenizer.pad_token = tokenizer.eos_token
 uhead = AutoUncertaintyHead.from_pretrained(
     uhead_name, base_model=llm)
-llm_adapter = CausalLMWithUncertainty(llm, uhead, tokenizer=tokenizer)
+
+generation_config = GenerationConfig.from_pretrained(model_name)
+args_generate = {"generation_config": generation_config,
+                 "max_new_tokens": 50}
+calc_infer_llm = CalculatorInferLuh(uhead, 
+                                    tokenize=True, 
+                                    args_generate=args_generate,
+                                    device="cuda",
+                                    generations_cache_dir="",
+                                    predict_token_uncertainties=True)
+
+estimator = LuhEstimatorDummy()
+llm_adapter = CausalLMWithUncertainty(llm, tokenizer=tokenizer, stat_calculators=[calc_infer_llm], estimator=estimator)
 
 # prepare text ...
 messages = [
     [
         {
             "role": "user", 
-            "content": "How many fingers are on a coala's foot?"
+            "content": "In which year did the programming language Mercury first appear? Answer with a year only."
         }
     ]
 ]
-
+# The correct answer is 1995
 chat_messages = [tokenizer.apply_chat_template(m, tokenize=False, add_bos_token=False) for m in messages]
 inputs = tokenizer(chat_messages, return_tensors="pt", padding=True, truncation=True, add_special_tokens=False).to("cuda")
 
-output = llm_adapter.generate(inputs)
-output["uncertainty_logits"]
+output = llm_adapter.generate(inputs["input_ids"])
+output["uncertainty_score"]
 ```
 
 ## Training
@@ -75,7 +89,7 @@ CUDA_VISIBLE_DEVICES=0 python -m luh.cli.train.run_train_uhead \
   year         = {2025},
   address      = {Abu Dhabi, United Arab Emirates},
   publisher    = {Association for Computational Linguistics},
-  pages        = {to appear},
-  url          = {https://arxiv.org/abs/2505.08200}
+  pages        = {35700--35719},
+  url          = {https://aclanthology.org/2025.emnlp-main.1809/}
 }
 ```
