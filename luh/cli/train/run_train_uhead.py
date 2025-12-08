@@ -69,7 +69,7 @@ def load_model(config):
         config.model.pretrained_model_name_or_path,
         torch_dtype=config.model.torch_dtype,
         trust_remote_code=True,
-        config.model.device_map,
+        device_map=config.model.device_map,
         cache_dir=getattr(config, 'hf_cache', None),
         token=getattr(config, 'hf_token', None),
         attn_implementation="eager",
