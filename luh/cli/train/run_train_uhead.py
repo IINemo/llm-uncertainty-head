@@ -1,31 +1,4 @@
-_with_uncertainty_layer import CausalLMWithUncertaintyLayer
-from .causal_lm_with_uncertainty_layer_claim import CausalLMWithUncertaintyLayerClaim
-
-from luh.utils import load_any_dataset
-from luh import AutoUncertaintyHead
-
-import logging
-
-transformers_logging.set_verbosity_info()
-transformers_logging.enable_default_handler()
-
-log = logging.getLogger()
-hf_logger = logging.getLogger("transformers")
-
-
-def load_tokenizer(config):
-        tokenizer = AutoTokenizer.from_pretrained(
-                        config.model.pretrained_model_name_or_path,
-                                model_max_length=2400,
-                                        padding_side="left",
-                                                cache_dir=getattr(config, 'hf_cache', None),
-                                                        token=getattr(config, 'hf_token', None),
-                                                            )
-            tokenizer.pad_token = tokenizer.eos_token
-                return tokenizer
-
-
-            deimport hydra
+import hydra
 from pathlib import Path
 import os
 import json
@@ -61,7 +34,34 @@ from transformers import (
 )
 from transformers import logging as transformers_logging
 
-from .causal_lmf load_model(config):
+from .causal_lm_with_uncertainty_layer import CausalLMWithUncertaintyLayer
+from .causal_lm_with_uncertainty_layer_claim import CausalLMWithUncertaintyLayerClaim
+
+from luh.utils import load_any_dataset
+from luh import AutoUncertaintyHead
+
+import logging
+
+transformers_logging.set_verbosity_info()
+transformers_logging.enable_default_handler()
+
+log = logging.getLogger()
+hf_logger = logging.getLogger("transformers")
+
+
+def load_tokenizer(config):
+    tokenizer = AutoTokenizer.from_pretrained(
+        config.model.pretrained_model_name_or_path,
+        model_max_length=2400,
+        padding_side="left",
+        cache_dir=getattr(config, 'hf_cache', None),
+        token=getattr(config, 'hf_token', None),
+    )
+    tokenizer.pad_token = tokenizer.eos_token
+    return tokenizer
+
+
+def load_model(config):
     config.model.torch_dtype = globals().get(config.model.torch_dtype)
 
     log.info(f"Loading model {config.model.pretrained_model_name_or_path}...")
@@ -69,7 +69,7 @@ from .causal_lmf load_model(config):
         config.model.pretrained_model_name_or_path,
         torch_dtype=config.model.torch_dtype,
         trust_remote_code=True,
-        device_map="auto",
+        config.model.device_map,
         cache_dir=getattr(config, 'hf_cache', None),
         token=getattr(config, 'hf_token', None),
         attn_implementation="eager",
@@ -663,7 +663,6 @@ def main(config):
             log.info("Done with prediction.")
 
             save_dataset = Dataset.from_dict({
-
                 "logits" : predictions[0][0],
                 "uncertainty_logits" : predictions[0][1]})
 
