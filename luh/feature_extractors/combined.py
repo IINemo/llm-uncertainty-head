@@ -32,6 +32,9 @@ class FeatureExtractorCombined(FeatureExtractorBase):
     def output_attention(self):
         return any(fe.output_attention() for fe in self._feature_extractors)
 
+    def output_router_logits(self):
+        return any(fe.output_router_logits() for fe in self._feature_extractors)
+
 
 def load_extractor(config, base_model):
     feature_extractors = []

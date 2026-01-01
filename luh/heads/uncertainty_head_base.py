@@ -47,6 +47,10 @@ class UncertaintyHeadBase(nn.Module):
     def output_attentions(self):
         return self.feature_extractor.output_attention()
 
+    @property
+    def output_router_logits(self):
+        return self.feature_extractor.output_router_logits()
+
     @classmethod
     def from_pretrained(
         cls,

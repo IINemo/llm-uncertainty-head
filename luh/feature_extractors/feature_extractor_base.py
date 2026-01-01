@@ -15,3 +15,6 @@ class FeatureExtractorBase(ABC):
 
     def output_attention(self):
         return False
+
+    def output_router_logits(self):
+        return False

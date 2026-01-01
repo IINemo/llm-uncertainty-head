@@ -1,0 +1,49 @@
+hydra:
+  run:
+    dir: ${output_dir}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+model:
+  pretrained_model_name_or_path: mistralai/Mixtral-8x7B-Instruct-v0.1
+  device_map: auto
+  trust_remote_code: true
+  torch_dtype: torch.bfloat16
+
+ue_layer:
+  path: ''
+  pos_weight: 3
+  output_attention: false
+  head_cfg:
+    head_type: claim
+    feature_extractor:
+    - name: luh.feature_extractors.mixtral_router
+      layer_nums: all
+      normalize: true
+    uncertainty_head:
+      head_dim: 256
+      n_layers: 2
+      n_heads: 4
+      dropout: 0.1
+
+dataset:
+  path: hf:llm-uncertainty-head/train_akimbio_mistral
+  num_instances: 0
+  test_size: 0.0
+  validation: test
+
+training_arguments:
+  num_train_epochs: 3
+  learning_rate: 0.0001
+  warmup_ratio: 0.05
+  weight_decay: 0.1
+  gradient_accumulation_steps: 1
+  per_device_train_batch_size: 8
+  max_grad_norm: 1.0
+
+do_train: true
+do_eval: true
+do_hyperopt: false
+do_save_checkpoints: true
+do_save_final_model: true
+report_to: none
+output_dir: ./workdir/train
+do_predict: false

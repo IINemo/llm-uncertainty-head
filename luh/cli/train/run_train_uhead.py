@@ -99,6 +99,7 @@ def load_model(config):
             ue_head=uq_head,
             ue_pos_weight=config.ue_layer.pos_weight,
             output_attention=uq_head.output_attentions,
+            output_router_logits=uq_head.output_router_logits,
         )
     elif uq_head.model_type == "token":
         model = CausalLMWithUncertaintyLayer(
@@ -106,6 +107,7 @@ def load_model(config):
             ue_head=uq_head,
             ue_pos_weight=config.ue_layer.pos_weight,
             output_attention=uq_head.output_attentions,
+            output_router_logits=uq_head.output_router_logits,
         )
 
     for name, param in model.named_parameters():
