@@ -24,7 +24,9 @@ import torch.nn.init as init
 from datasets import DatasetDict, Dataset
 from transformers import (
     AutoModelForCausalLM,
+    AutoModelForVision2Seq,
     AutoTokenizer,
+    AutoProcessor,
     DataCollatorForLanguageModeling,
     EarlyStoppingCallback,
     Trainer,
@@ -61,20 +63,63 @@ def load_tokenizer(config):
     return tokenizer
 
 
+def load_processor(config):
+    """Load a processor for VLMs that handles both text and images."""
+    is_vlm = getattr(config.model, 'is_vlm', False)
+    if not is_vlm:
+        return None
+
+    log.info(f"Loading VLM processor for {config.model.pretrained_model_name_or_path}...")
+    try:
+        processor = AutoProcessor.from_pretrained(
+            config.model.pretrained_model_name_or_path,
+            cache_dir=getattr(config, 'hf_cache', None),
+            token=getattr(config, 'hf_token', None),
+            trust_remote_code=True,
+        )
+        # Set pad token if not set
+        if hasattr(processor, 'tokenizer'):
+            if processor.tokenizer.pad_token is None:
+                processor.tokenizer.pad_token = processor.tokenizer.eos_token
+        log.info("VLM processor loaded successfully")
+        return processor
+    except Exception as e:
+        log.warning(f"Failed to load processor: {e}. Will use tokenizer instead.")
+        return None
+
+
 def load_model(config):
     config.model.torch_dtype = globals().get(config.model.torch_dtype)
 
+    is_vlm = getattr(config.model, 'is_vlm', False)
+
     log.info(f"Loading model {config.model.pretrained_model_name_or_path}...")
-    base_model = AutoModelForCausalLM.from_pretrained(
-        config.model.pretrained_model_name_or_path,
-        torch_dtype=config.model.torch_dtype,
-        trust_remote_code=True,
-        device_map=config.model.device_map,
-        cache_dir=getattr(config, 'hf_cache', None),
-        token=getattr(config, 'hf_token', None),
-        attn_implementation="eager",
-        low_cpu_mem_usage=True,
-    )
+
+    # For VLMs, use AutoModelForVision2Seq; for text-only, use AutoModelForCausalLM
+    if is_vlm:
+        log.info("Loading as Vision-Language Model (VLM)")
+        base_model = AutoModelForVision2Seq.from_pretrained(
+            config.model.pretrained_model_name_or_path,
+            torch_dtype=config.model.torch_dtype,
+            trust_remote_code=True,
+            device_map=config.model.device_map,
+            cache_dir=getattr(config, 'hf_cache', None),
+            token=getattr(config, 'hf_token', None),
+            attn_implementation="eager",
+            low_cpu_mem_usage=True,
+        )
+    else:
+        log.info("Loading as text-only CausalLM")
+        base_model = AutoModelForCausalLM.from_pretrained(
+            config.model.pretrained_model_name_or_path,
+            torch_dtype=config.model.torch_dtype,
+            trust_remote_code=True,
+            device_map=config.model.device_map,
+            cache_dir=getattr(config, 'hf_cache', None),
+            token=getattr(config, 'hf_token', None),
+            attn_implementation="eager",
+            low_cpu_mem_usage=True,
+        )
 
     if config.ue_layer.path:
         uq_head = AutoUncertaintyHead.from_pretrained(config.ue_layer.path, base_model)
@@ -93,12 +138,15 @@ def load_model(config):
 
         uq_head.apply(reinitialize_weights)
 
+    is_vlm = getattr(config.model, 'is_vlm', False)
+
     if uq_head.model_type == "claim":
         model = CausalLMWithUncertaintyLayerClaim(
             base_model,
             ue_head=uq_head,
             ue_pos_weight=config.ue_layer.pos_weight,
             output_attention=uq_head.output_attentions,
+            is_vlm=is_vlm,
         )
     elif uq_head.model_type == "token":
         model = CausalLMWithUncertaintyLayer(
@@ -106,6 +154,7 @@ def load_model(config):
             ue_head=uq_head,
             ue_pos_weight=config.ue_layer.pos_weight,
             output_attention=uq_head.output_attentions,
+            is_vlm=is_vlm,
         )
 
     for name, param in model.named_parameters():
@@ -118,7 +167,7 @@ def load_model(config):
     return model
 
 
-def load_data(config, tokenizer):
+def load_data(config, tokenizer, processor=None):
     log.info(f"Loading dataset {config.dataset.path}...")
     dataset = load_any_dataset(config.dataset.path, config)
 
@@ -128,6 +177,8 @@ def load_data(config, tokenizer):
     if config.dataset.num_instances:
         dataset["train"] = dataset["train"].select(range(config.dataset.num_instances))
 
+    is_vlm = getattr(config.model, 'is_vlm', False)
+    image_column = getattr(config.dataset, 'image_column', 'images')
 
     tokenized_data = dataset["train"] if config.do_train else Dataset.from_dict({})
 
@@ -147,6 +198,12 @@ def load_data(config, tokenizer):
         return {"prompt_tokens": tokenizer.apply_chat_template([{"role": "user", "content": inst["question"]}], add_generation_prompt=True)}
 
     tokenized_data = tokenized_data.map(prompt_tokens)
+
+    # For VLMs, ensure images are preserved in the dataset
+    if is_vlm and image_column in tokenized_data['train'].features:
+        log.info(f"VLM mode: preserving image column '{image_column}' in dataset")
+        # Images will be processed by the data collator during batching
+
     log.info(f"Length of the training dataset: {len(tokenized_data['train'])}")
     log.info(f"Length of the testing dataset: {len(tokenized_data['test'])}")
 
@@ -241,7 +298,12 @@ class DataCollatorForLanguageModelingWithUncertaintyClaim(DataCollatorForLanguag
             if token_id not in self.tokenizer.all_special_ids:
                 mapping.append(idx)
 
-        adjusted_positions = [mapping[i] for i in claim_token_positions]
+        # Adjust claim positions with bounds checking
+        # Vision tokens can change sequence length, so we skip out-of-bounds positions
+        adjusted_positions = []
+        for i in claim_token_positions:
+            if i < len(mapping):
+                adjusted_positions.append(mapping[i])
         return context_length + torch.tensor(adjusted_positions)
 
 
@@ -275,7 +337,7 @@ class DataCollatorForLanguageModelingWithUncertaintyClaim(DataCollatorForLanguag
                 mask[claim_token_positions] = 1
                 instance_claims.append(mask[1:]) # ignoring <s>
 
-            all_claim_tensors.append(torch.stack(instance_claims) if len(instance_claims) > 0 else torch.zeros(0, full_len - 1, dtype=int))
+            all_claim_tensors.append(torch.stack(instance_claims) if len(instance_claims) > 0 else torch.zeros(0, batch["input_ids"][i].shape[0] - 1, dtype=int))
 
         batch["claims"] = all_claim_tensors
 
@@ -291,6 +353,184 @@ class DataCollatorForLanguageModelingWithUncertaintyClaim(DataCollatorForLanguag
 
         dict_batch = dict(batch)
         return dict_batch
+
+
+class DataCollatorForVLMWithUncertaintyClaim(DataCollatorForLanguageModeling):
+    """
+    Data collator for Vision-Language Models with uncertainty head (claim-level).
+
+    Handles multimodal inputs including text and images (pixel_values).
+    """
+    def __init__(self, tokenizer, processor=None, image_column="images", *args, **kwargs):
+        self._tokenizer = tokenizer
+        self._processor = processor
+        self._image_column = image_column
+        super().__init__(tokenizer, *args, **kwargs)
+
+    def _adjust_claim_positions(self, context_length, input_ids, claim_obj):
+        claim_token_positions = claim_obj['aligned_token_ids']
+        mapping = []
+        for idx, token_id in enumerate(input_ids[context_length:]):
+            if token_id not in self.tokenizer.all_special_ids:
+                mapping.append(idx)
+
+        # Adjust claim positions with bounds checking
+        # Vision tokens can change sequence length, so we skip out-of-bounds positions
+        adjusted_positions = []
+        for i in claim_token_positions:
+            if i < len(mapping):
+                adjusted_positions.append(mapping[i])
+        return context_length + torch.tensor(adjusted_positions)
+
+    def torch_call(self, examples):
+        batch_size = len(examples)
+
+        # Do padding for text inputs
+        batch = super().torch_call([{'input_ids' : e['input_ids']} for e in examples])
+
+        # Construct context lengths
+        context_lengths = []
+        for i in range(batch_size):
+            reply_len = len(examples[i]['input_ids']) - len(examples[i]['prompt_tokens'])
+            context_lengths.append(batch["input_ids"][i].shape[0] - reply_len)
+
+        batch["context_lengths"] = torch.tensor(context_lengths)
+
+        # Handle images (pixel_values) if present
+        if self._image_column and examples[0].get(self._image_column) is not None:
+            # Collect all images from the batch
+            all_images = [e[self._image_column] for e in examples]
+
+            # Process images using the processor
+            if self._processor is not None:
+                # For Qwen2.5-VL and similar VLMs, we need to process images
+                # The processor expects a list of images per batch item
+                pixel_values_list = []
+                for images in all_images:
+                    if isinstance(images, list):
+                        # Multiple images per sample
+                        processed = self._processor.image_processor(
+                            images=[img for img in images],
+                            return_tensors="pt"
+                        )
+                    else:
+                        # Single image per sample
+                        processed = self._processor.image_processor(
+                            images=[images],
+                            return_tensors="pt"
+                        )
+                    pixel_values_list.append(processed.pixel_values)
+
+                # Stack pixel values for the batch
+                # Note: Qwen2.5-VL may have different shapes, so we handle them separately
+                batch["pixel_values"] = pixel_values_list
+            else:
+                # Fallback: try to use images directly if they're already tensors
+                batch["pixel_values"] = [e.get("pixel_values") for e in examples]
+
+        # Construct claim tensors
+        all_claim_tensors = []
+        all_labels = []
+        for i in range(len(batch["input_ids"])):
+            instance_claims = []
+            instance_labels = []
+            for claim_idx, claim in enumerate(examples[i]["claims"]):
+                claim_token_positions = self._adjust_claim_positions(
+                    batch["context_lengths"][i], batch["input_ids"][i], claim
+                )
+                # Skip claims with no valid positions (can happen with VLM vision tokens)
+                if len(claim_token_positions) == 0:
+                    continue
+
+                mask = torch.zeros(batch["input_ids"][i].shape, dtype=int)
+                # Clip positions to be within bounds
+                claim_token_positions = torch.clamp(claim_token_positions, 0, mask.shape[0] - 1)
+                mask[claim_token_positions] = 1
+                instance_claims.append(mask[1:])  # ignoring <s>
+                # Keep the corresponding verified label
+                instance_labels.append(examples[i]["verified"][claim_idx])
+
+            all_claim_tensors.append(
+                torch.stack(instance_claims) if len(instance_claims) > 0
+                else torch.zeros(0, batch["input_ids"][i].shape[0] - 1, dtype=int)
+            )
+            # Filter labels to match filtered claims
+            all_labels.append([e if not np.isnan(e) else -100 for e in instance_labels])
+
+        batch["claims"] = all_claim_tensors
+        batch["verified"] = all_labels
+
+        return dict(batch)
+
+
+class DataCollatorForVLMWithUncertainty(DataCollatorForLanguageModeling):
+    """
+    Data collator for Vision-Language Models with uncertainty head (token-level).
+
+    Handles multimodal inputs including text and images (pixel_values).
+    """
+    def __init__(self, tokenizer, processor=None, image_column="images", *args, **kwargs):
+        self._tokenizer = tokenizer
+        self._processor = processor
+        self._image_column = image_column
+        super().__init__(tokenizer, *args, **kwargs)
+
+    def torch_call(self, examples):
+        batch_size = len(examples)
+
+        # Do padding of input_ids
+        batch = super().torch_call([{'input_ids' : e['input_ids']} for e in examples])
+
+        # Construct context lengths
+        context_lengths = []
+        for i in range(batch_size):
+            reply_len = len(examples[i]['input_ids']) - len(examples[i]['prompt_tokens'])
+            context_lengths.append(batch["input_ids"][i].shape[0] - reply_len)
+
+        batch["context_lengths"] = torch.tensor(context_lengths)
+
+        # Handle images (pixel_values) if present
+        if self._image_column and examples[0].get(self._image_column) is not None:
+            all_images = [e[self._image_column] for e in examples]
+
+            if self._processor is not None:
+                pixel_values_list = []
+                for images in all_images:
+                    if isinstance(images, list):
+                        processed = self._processor.image_processor(
+                            images=[img for img in images],
+                            return_tensors="pt"
+                        )
+                    else:
+                        processed = self._processor.image_processor(
+                            images=[images],
+                            return_tensors="pt"
+                        )
+                    pixel_values_list.append(processed.pixel_values)
+
+                batch["pixel_values"] = pixel_values_list
+            else:
+                batch["pixel_values"] = [e.get("pixel_values") for e in examples]
+
+        # Do padding of labels
+        all_padded_labels = []
+        for idx in range(len(examples)):
+            uncertainty_labels = examples[idx]["uncertainty_labels"]
+            difference = len(batch["input_ids"][0]) - len(uncertainty_labels)
+
+            if self.tokenizer.padding_side == "right":
+                raise Exception("Internal: detected right padding side, but set 'left' before")
+                padded_labels = uncertainty_labels + [-100] * difference
+            elif self.tokenizer.padding_side == "left":
+                padded_labels = [-100] * difference + uncertainty_labels
+            else:
+                raise ValueError(f"Unknown padding side: {self.tokenizer.padding_side}")
+
+            all_padded_labels.append(padded_labels)
+
+        batch["uncertainty_labels"] = torch.tensor(all_padded_labels)
+
+        return batch
 
 
 def compute_claim_level_metrics(tokenized_data, logits):
@@ -513,9 +753,17 @@ def main(config):
     tokenizer = load_tokenizer(config)
     log.info("Done.")
 
+    log.info("Loading processor...")
+    processor = load_processor(config)
+    if processor:
+        log.info(f"Processor loaded: {type(processor).__name__}")
+    else:
+        log.info("No processor loaded (text-only mode)")
+    log.info("Done.")
+
     log.info("Loading dataset...")
 
-    tokenized_data = load_data(config, tokenizer)
+    tokenized_data = load_data(config, tokenizer, processor)
     log.info("Done.")
     log.info(repr(tokenized_data))
 
@@ -549,6 +797,10 @@ def main(config):
 
     print()
 
+    # Check if this is a VLM
+    is_vlm = getattr(config.model, 'is_vlm', False)
+    image_column = getattr(config.dataset, 'image_column', 'images')
+
     if model.ue_head.model_type == "claim":
         def dataset_filter(inst):
             return len(inst['claims']) > 0
@@ -558,9 +810,24 @@ def main(config):
         #     for split, ds in tokenized_data.items()
         # }
         tokenized_data = tokenized_data.filter(dataset_filter)
-        data_collator = DataCollatorForLanguageModelingWithUncertaintyClaim(tokenizer, mlm=False)
+
+        # Use VLM data collator if is_vlm is set
+        if is_vlm:
+            log.info("Using VLM data collator for claim-level uncertainty")
+            data_collator = DataCollatorForVLMWithUncertaintyClaim(
+                tokenizer, processor=processor, image_column=image_column, mlm=False
+            )
+        else:
+            data_collator = DataCollatorForLanguageModelingWithUncertaintyClaim(tokenizer, mlm=False)
     elif model.ue_head.model_type == "token":
-        data_collator = DataCollatorForLanguageModelingWithUncertainty(tokenizer, mlm=False)
+        # Use VLM data collator if is_vlm is set
+        if is_vlm:
+            log.info("Using VLM data collator for token-level uncertainty")
+            data_collator = DataCollatorForVLMWithUncertainty(
+                tokenizer, processor=processor, image_column=image_column, mlm=False
+            )
+        else:
+            data_collator = DataCollatorForLanguageModelingWithUncertainty(tokenizer, mlm=False)
 
     callbacks = [LoggerCallback()]
     if config.do_save_checkpoints:

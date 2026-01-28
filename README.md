@@ -80,6 +80,39 @@ CUDA_VISIBLE_DEVICES=0 python -m luh.cli.train.run_train_uhead \
     model.pretrained_model_name_or_path="<your model name, e.g.  mistralai/Mistral-7B-Instruct-v0.2>"
 ```
 
+### Vision-Language Model (VLM) Training
+
+The library also supports training uncertainty heads for Vision-Language Models (VLMs) such as Qwen2.5-VL. When training with VLMs:
+
+1. Set `model.is_vlm: true` in your config
+2. Specify the `dataset.image_column` containing images (default: "images")
+3. Use a dataset with pre-tokenized inputs and image data
+
+**Example: Training with Qwen2.5-VL-3B-Instruct**
+
+```bash
+CUDA_VISIBLE_DEVICES=0 HYDRA_CONFIG=/home/artem.vazhentsev/llm-uncertainty-head/configs/run_train_vl_uhead.yaml \
+    python -m luh.cli.train.run_train_uhead \
+    model.pretrained_model_name_or_path=Qwen/Qwen2.5-VL-3B-Instruct \
+    dataset.path=hf:ArtemVazhentsev21/akimbio_with_white_images
+```
+
+The VLM training automatically:
+- Loads the appropriate processor for handling images
+- Uses VLM-specific data collators that pass `pixel_values` to the model
+- Preserves image data through the training pipeline
+- Maintains compatibility with text-only uncertainty head types
+
+**Key differences from text-only training:**
+- The data collator handles multimodal inputs (text + images)
+- The processor (not just tokenizer) is used for image preprocessing
+- Batch sizes may need to be reduced due to image memory requirements
+
+**VLM Configuration Options:**
+- `model.is_vlm`: Set to `true` to enable VLM mode
+- `dataset.image_column`: Column name containing images in the dataset (default: "images")
+- `training_arguments.per_device_train_batch_size`: Typically smaller for VLMs (e.g., 4 instead of 32)
+
 ## Cite
 ```
 @inproceedings{shelmanov2025head,

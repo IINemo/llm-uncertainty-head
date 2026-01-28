@@ -14,7 +14,8 @@ class CausalLMWithUncertaintyLayerClaim(PreTrainedModel):
         base_model,
         ue_head,
         ue_pos_weight: float,
-        output_attention: bool = False
+        output_attention: bool = False,
+        is_vlm: bool = False
     ):
         super().__init__(PretrainedConfig())
 
@@ -22,6 +23,7 @@ class CausalLMWithUncertaintyLayerClaim(PreTrainedModel):
         self.ue_head = ue_head
         self._output_attention = output_attention
         self._ue_pos_weight = ue_pos_weight
+        self._is_vlm = is_vlm
 
     def generate(self, *args, **kwargs):
         raise NotImplementedError
@@ -45,6 +47,11 @@ class CausalLMWithUncertaintyLayerClaim(PreTrainedModel):
         output_hidden_states = True
         output_attentions = self._output_attention
 
+        # Filter out arguments not supported by VLMs
+        # Some VLMs (like Qwen2.5-VL) don't accept num_items_in_batch
+        if self._is_vlm:
+            kwargs = {k: v for k, v in kwargs.items() if k != 'num_items_in_batch'}
+
         outputs = self.orig_base_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -57,7 +64,7 @@ class CausalLMWithUncertaintyLayerClaim(PreTrainedModel):
         logits = outputs.logits
         outputs.context_lengths = context_lengths
 
-        ue_head_input = {"input_ids": input_ids, 
+        ue_head_input = {"input_ids": input_ids,
                          "attention_mask": attention_mask,
                          "claims": claims}
 
