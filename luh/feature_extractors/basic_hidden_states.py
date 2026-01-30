@@ -7,7 +7,15 @@ from .utils import get_layer_nums
 class FeatureExtractorBasicHiddenStates(FeatureExtractorBase):
     def __init__(self, orig_base_model, layer_nums=[-1], **kwargs):
         self._layer_nums = get_layer_nums(layer_nums, orig_base_model)
-        self._feature_dim = orig_base_model.config.hidden_size * len(self._layer_nums)
+        # Handle VLM configs with text_config
+        config = orig_base_model.config
+        if hasattr(config, 'text_config') and hasattr(config.text_config, 'hidden_size'):
+            hidden_size = config.text_config.hidden_size
+        elif hasattr(config, 'hidden_size'):
+            hidden_size = config.hidden_size
+        else:
+            raise AttributeError(f"Cannot find hidden_size in config. Available: {dir(config)}")
+        self._feature_dim = hidden_size * len(self._layer_nums)
 
     def __call__(self, llm_inputs, llm_outputs):
         """ output = (batch_size x output.sequences.shape[0] x hidden_state) """

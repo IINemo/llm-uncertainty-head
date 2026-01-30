@@ -4,7 +4,15 @@ from collections.abc import Iterable
 
 def get_layer_nums(layer_nums, orig_base_model):
     if layer_nums == 'all':
-        return list(range(orig_base_model.config.num_hidden_layers))
+        # Handle VLM configs with text_config
+        config = orig_base_model.config
+        if hasattr(config, 'text_config') and hasattr(config.text_config, 'num_hidden_layers'):
+            num_layers = config.text_config.num_hidden_layers
+        elif hasattr(config, 'num_hidden_layers'):
+            num_layers = config.num_hidden_layers
+        else:
+            raise AttributeError(f"Cannot find num_hidden_layers in config. Available: {dir(config)}")
+        return list(range(num_layers))
     elif isinstance(layer_nums, Iterable):
         return list(layer_nums)
     return (layer_nums,)
@@ -12,7 +20,15 @@ def get_layer_nums(layer_nums, orig_base_model):
 
 def get_head_nums(head_nums, layer_nums, orig_base_model):
     if head_nums == 'all':
-        all_heads = list(range(orig_base_model.config.num_attention_heads))
+        # Handle VLM configs with text_config
+        config = orig_base_model.config
+        if hasattr(config, 'text_config') and hasattr(config.text_config, 'num_attention_heads'):
+            num_heads = config.text_config.num_attention_heads
+        elif hasattr(config, 'num_attention_heads'):
+            num_heads = config.num_attention_heads
+        else:
+            raise AttributeError(f"Cannot find num_attention_heads in config. Available: {dir(config)}")
+        all_heads = list(range(num_heads))
         return {l: all_heads for l in layer_nums}
     elif isinstance(head_nums, dict):
         heads: dict[int, list[int]] = {}  # list of heads for each layer

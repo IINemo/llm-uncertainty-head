@@ -92,22 +92,41 @@ def load_model(config):
     config.model.torch_dtype = globals().get(config.model.torch_dtype)
 
     is_vlm = getattr(config.model, 'is_vlm', False)
+    model_name_lower = config.model.pretrained_model_name_or_path.lower()
 
     log.info(f"Loading model {config.model.pretrained_model_name_or_path}...")
 
-    # For VLMs, use AutoModelForVision2Seq; for text-only, use AutoModelForCausalLM
+        # For VLMs, try AutoModelForVision2Seq first; for text-only, use AutoModelForCausalLM
     if is_vlm:
         log.info("Loading as Vision-Language Model (VLM)")
-        base_model = AutoModelForVision2Seq.from_pretrained(
-            config.model.pretrained_model_name_or_path,
-            torch_dtype=config.model.torch_dtype,
-            trust_remote_code=True,
-            device_map=config.model.device_map,
-            cache_dir=getattr(config, 'hf_cache', None),
-            token=getattr(config, 'hf_token', None),
-            attn_implementation="eager",
-            low_cpu_mem_usage=True,
-        )
+        try:
+            base_model = AutoModelForVision2Seq.from_pretrained(
+                config.model.pretrained_model_name_or_path,
+                torch_dtype=config.model.torch_dtype,
+                trust_remote_code=True,
+                device_map=config.model.device_map,
+                cache_dir=getattr(config, 'hf_cache', None),
+                token=getattr(config, 'hf_token', None),
+                attn_implementation="eager",
+                low_cpu_mem_usage=True,
+            )
+            log.info("Loaded using AutoModelForVision2Seq")
+        except ValueError as e:
+            # Some VLMs (like Gemma3) are not supported by AutoModelForVision2Seq
+            # Fall back to AutoModelForCausalLM with trust_remote_code
+            log.warning(f"AutoModelForVision2Seq failed: {e}")
+            log.info("Falling back to AutoModelForCausalLM with trust_remote_code=True")
+            base_model = AutoModelForCausalLM.from_pretrained(
+                config.model.pretrained_model_name_or_path,
+                torch_dtype=config.model.torch_dtype,
+                trust_remote_code=True,
+                device_map=config.model.device_map,
+                cache_dir=getattr(config, 'hf_cache', None),
+                token=getattr(config, 'hf_token', None),
+                attn_implementation="eager",
+                low_cpu_mem_usage=True,
+            )
+            log.info("Loaded using AutoModelForCausalLM fallback")
     else:
         log.info("Loading as text-only CausalLM")
         base_model = AutoModelForCausalLM.from_pretrained(
