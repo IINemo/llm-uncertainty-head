@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from lm_polygraph.stat_calculators import StatCalculator
 from lm_polygraph.model_adapters import WhiteboxModelvLLM
 
@@ -10,96 +11,82 @@ class VLLMTokenProbabilities(StatCalculator):
 
     @staticmethod
     def meta_info() -> tuple[list[str], list[str]]:
-        return (
-            ["vllm_token_probs", "full_attention_mask"],
-            ["vllm_output"],
-        )
+        # expects deps to contain logprobs / prompt_logprobs (or vllm_output from which they can be read)
+        return (["vllm_token_probs", "full_attention_mask"], ["vllm_output"])
 
-    def _completion_samples_from_output(self, output):
-        # output may be RequestOutputWithUncertainty, RequestOutput, list of them,
-        # or a completion object already.
-        if isinstance(output, (list, tuple)):
-            samples = []
-            for o in output:
-                if hasattr(o, "outputs"):  # request output
-                    samples.extend(list(o.outputs))
-                else:
-                    samples.append(o)
-            return samples
+    def _topn_probs_from_lp_dict(self, lp_dict) -> np.ndarray:
+        """
+        lp_dict: token_id -> object with .logprob (log p)
+        returns: (top_n,) probs (p), zero-padded
+        """
+        out = np.zeros((self.top_n,), dtype=np.float32)
+        if not lp_dict:
+            return out
 
-        if hasattr(output, "outputs"):
-            return list(output.outputs)
-
-        return [output]
+        # Take highest logprob entries
+        items = [float(info.logprob) for info in lp_dict.values()]
+        items.sort(reverse=True)
+        k = min(self.top_n, len(items))
+        if k > 0:
+            out[:k] = np.exp(np.asarray(items[:k], dtype=np.float32))
+        return out
 
     def __call__(
-            self,
-            dependencies: dict[str, np.array],
-            texts: list[str],
-            model: WhiteboxModelvLLM,
-            max_new_tokens: int = 100,
-            **kwargs,
+        self,
+        dependencies: dict[str, np.array],
+        texts: list[str],
+        model: WhiteboxModelvLLM,
+        max_new_tokens: int = 100,
+        **kwargs,
     ) -> dict[str, np.ndarray]:
-        output = dependencies["vllm_output"]
 
-        samples = self._completion_samples_from_output(output)
+        # --- Support both patterns:
+        # (A) deps provide logprobs/prompt_logprobs directly (what you're doing in VLLMWithUncertainty)
+        # (B) fallback: read from vllm_output object
+        logprobs = dependencies.get("logprobs", None)
+        prompt_logprobs = dependencies.get("prompt_logprobs", None)
 
-        per_sample_feats = []
-        per_sample_masks = []
-        max_len = 0
+        if logprobs is None or prompt_logprobs is None:
+            out_obj = dependencies.get("vllm_output", None)
+            if out_obj is not None:
+                if logprobs is None:
+                    logprobs = getattr(out_obj, "logprobs", None)
+                if prompt_logprobs is None:
+                    prompt_logprobs = getattr(out_obj, "prompt_logprobs", None)
 
-        # ---- Per-sample extraction ----
-        for s in samples:
-            logprobs = getattr(s, "logprobs", None)
+        # Normalize to lists (empty if missing)
+        if logprobs is None:
+            logprobs = []
+        if prompt_logprobs is None:
+            prompt_logprobs = []
 
-            if not logprobs:
-                feats = np.zeros((0, self.top_n), dtype=np.float32)
-                mask = np.zeros((0,), dtype=np.int64)
-                per_sample_feats.append(feats)
-                per_sample_masks.append(mask)
+        # Optional sanity: ensure prompt_logprobs length matches context_length if provided
+        ctx_len = dependencies.get("context_length", None)
+        if ctx_len is not None and len(prompt_logprobs) not in (0, int(ctx_len)):
+            # don't hard fail: sometimes prompt_logprobs may include special tokens differently
+            # but it's useful to know
+            pass
+
+        # Build sequence of per-position logprob dicts for full sequence:
+        # prompt positions first, then generated positions
+        per_pos = list(prompt_logprobs) + list(logprobs)
+        T = len(per_pos)
+
+        token_probs = torch.zeros((T, self.top_n), dtype=torch.float32)
+        mask = torch.zeros((T,), dtype=torch.int64)
+
+        for t, lp_dict in enumerate(per_pos):
+            if not lp_dict:
                 continue
+            token_probs[t, :] = torch.FloatTensor(self._topn_probs_from_lp_dict(lp_dict))
+            mask[t] = 1
 
-            T = len(logprobs)
-            max_len = max(max_len, T)
-
-            feats = np.zeros((T, self.top_n), dtype=np.float32)
-            mask = np.zeros((T,), dtype=np.int64)
-
-            for t, lp_dict in enumerate(logprobs):
-                if not lp_dict:
-                    continue
-
-                # Valid generated token at timestep t
-                mask[t] = 1
-
-                # Collect logprobs
-                items = [
-                    float(info.logprob)
-                    for info in lp_dict.values()
-                ]
-                items.sort(reverse=True)
-
-                k = min(self.top_n, len(items))
-                if k > 0:
-                    top_ps = np.exp(np.array(items[:k], dtype=np.float32))
-                    feats[t, :k] = top_ps
-
-            per_sample_feats.append(feats)
-            per_sample_masks.append(mask)
-
-        # ---- Pad to rectangular tensors ----
-        B = len(per_sample_feats)
-
-        token_probs = np.zeros((B, max_len, self.top_n), dtype=np.float32)
-        full_attention_mask = np.zeros((B, max_len), dtype=np.int64)
-
-        for i in range(B):
-            T = per_sample_feats[i].shape[0]
-            if T > 0:
-                token_probs[i, :T, :] = per_sample_feats[i]
-                full_attention_mask[i, :T] = per_sample_masks[i]
+        # This calculator is typically called per-sample in your loop,
+        # so return with batch dimension = 1.
+        token_probs = token_probs[None, :, :]          # (1, T, top_n)
+        full_attention_mask = mask[None, :]            # (1, T)
 
         return {
-            "vllm_token_probs": token_probs,
+            "vllm_token_probs": token_probs[:, :-1, :],
             "full_attention_mask": full_attention_mask,
         }

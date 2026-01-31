@@ -1,5 +1,7 @@
+import torch
 from lm_polygraph.stat_calculators import StatCalculator
 from luh import AutoUncertaintyHead
+from lm_polygraph.stat_calculators.extract_claims import Claim
 from .vllm_features_token_probs import VLLMTokenProbabilities
 from .vllm_features_hidden_states import VLLMHiddenStates
 from luh.feature_extractors.combined import FeatureExtractorCombined
@@ -8,8 +10,9 @@ from luh.feature_extractors.basic_hidden_states import FeatureExtractorBasicHidd
 
 
 class VLLMUncertaintyHeadFeatures(StatCalculator):
-    def __init__(self, uhead: AutoUncertaintyHead):
+    def __init__(self, uhead: AutoUncertaintyHead, **hs_generator_kwargs):
         super().__init__()
+        self.hs_generator_kwargs = hs_generator_kwargs
         feature_extractor = getattr(uhead, "feature_extractor")
         if isinstance(feature_extractor, FeatureExtractorCombined):
             feature_extractors = getattr(feature_extractor, "_feature_extractors")
@@ -45,15 +48,33 @@ class VLLMUncertaintyHeadFeatures(StatCalculator):
 
     @staticmethod
     def meta_info() -> tuple[list[str], list[str]]:
-        return (["uhead_features"], [])
+        return (["uhead_features", "full_attention_mask", "llm_inputs"], [])
 
     def vllm_with_uncertainty_arguments(self) -> dict:
         return {
             "n_logprobs": self.n_logprobs,
             "output_hidden_states": self._hs_layer_ids is not None,
             "hs_layer_ids": self._hs_layer_ids,
-            "hs_generator_kwargs": None,  # set if needed
+            "hs_generator_kwargs": self.hs_generator_kwargs,
         }
+
+    def _completion_samples_from_output(self, output):
+        # output may be RequestOutputWithUncertainty, RequestOutput, list of them,
+        # or a completion object already.
+        if isinstance(output, (list, tuple)):
+            samples = []
+            for o in output:
+                if hasattr(o, "outputs"):  # request output
+                    samples.extend(list(o.outputs))
+                else:
+                    samples.append(o)
+            return samples
+
+        if hasattr(output, "outputs"):
+            return list(output.outputs)
+
+        return [output]
+
 
     def __call__(self, dependencies, texts, model, max_new_tokens: int = 100, **kwargs):
         import numpy as np
@@ -76,9 +97,16 @@ class VLLMUncertaintyHeadFeatures(StatCalculator):
 
         # Combine features: concatenate on last dim (B, T, *)
         if len(all_feats) == 1:
-            combined = all_feats[0]
+            combined = torch.FloatTensor(all_feats[0])
         else:
-            combined = np.concatenate(all_feats, axis=-1)
+            combined = torch.cat(all_feats, dim=-1)
 
         dependencies["uhead_features"] = combined
+        dependencies["llm_inputs"] = {
+            "input_ids": [None for _ in range(len(combined))],
+            "context_lenghts": dependencies["context_lenghts"],
+        }
+        dependencies["claims"] = [[
+            Claim(claim_text=None, sentence=None, aligned_token_ids=list(range(len(m.token_ids) - 1)))
+        ] for m in self._completion_samples_from_output(dependencies["vllm_output"])]
         return dependencies

@@ -2,12 +2,23 @@ import torch
 from collections.abc import Iterable
 
 
+def _normalize_idx(idx, n):
+    if idx < 0:
+        return n + idx
+    else:
+        return idx
+
 def get_layer_nums(layer_nums, orig_base_model):
+    try:
+        config = orig_base_model.config
+    except Exception as e:
+        config = orig_base_model.llm_engine.model_config.hf_config
+    n_layers = config.num_hidden_layers
     if layer_nums == 'all':
-        return list(range(orig_base_model.config.num_hidden_layers))
+        return list(range(config.num_hidden_layers))
     elif isinstance(layer_nums, Iterable):
-        return list(layer_nums)
-    return (layer_nums,)
+        return [_normalize_idx(x, n_layers) for x in layer_nums]
+    return (_normalize_idx(layer_nums, n_layers),)
 
 
 def get_head_nums(head_nums, layer_nums, orig_base_model):

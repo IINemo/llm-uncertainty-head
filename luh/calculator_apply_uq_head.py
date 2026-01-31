@@ -9,9 +9,10 @@ import numpy as np
 
 
 class CalculatorApplyUQHead(StatCalculator):
-    def __init__(self, uncertainty_head):
+    def __init__(self, uncertainty_head, device = None):
         super().__init__()
         self.uncertainty_head = uncertainty_head
+        self.device = device
 
     @staticmethod
     def meta_info() -> Tuple[List[str], List[str]]:
@@ -40,11 +41,15 @@ class CalculatorApplyUQHead(StatCalculator):
         
         batch["claims"] = self.prepare_claims(batch, claims, dependencies["full_attention_mask"].shape[1])
 
+        device = self.device
+        if device is None:
+            device = model.device()
+        self.uncertainty_head = self.uncertainty_head.to(device)
         with torch.no_grad():
             uncertainty_logits = self.uncertainty_head._compute_tensors(
-                recursive_to(batch, model.device()),
-                dependencies["uhead_features"].to(model.device()),
-                dependencies["full_attention_mask"][:, :-1].to(model.device()), # Ignoring last token
+                recursive_to(batch, device),
+                dependencies["uhead_features"].to(device),
+                dependencies["full_attention_mask"][:, :-1].to(device), # Ignoring last token
             )
 
         final_uncertainty_claims = [np.asarray([e.item() for e in claim if e != -100]) for claim in uncertainty_logits.cpu().numpy()]

@@ -125,16 +125,16 @@ class VLLMHiddenStates(StatCalculator):
             out_dim = 0
 
         B = len(per_sample_feats)
-        out = np.zeros((B, max_len, out_dim), dtype=np.float32)
-        full_attention_mask = np.zeros((B, max_len), dtype=np.int64)
+        out = torch.zeros((B, max_len, out_dim), dtype=torch.float32)
+        full_attention_mask = torch.zeros((B, max_len), dtype=torch.int64)
 
         for i in range(B):
             T = per_sample_feats[i].shape[0]
             if T > 0:
-                out[i, :T, :] = per_sample_feats[i]
-                full_attention_mask[i, :T] = per_sample_mask[i]
+                out[i, :T, :] = torch.FloatTensor(per_sample_feats[i])
+                full_attention_mask[i, :T] = torch.LongTensor(per_sample_mask[i])
 
         return {
-            "vllm_hidden_states": out,
+            "vllm_hidden_states": out[:, :-1, :],
             "full_attention_mask": full_attention_mask,
         }
