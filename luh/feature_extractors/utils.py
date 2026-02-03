@@ -12,7 +12,10 @@ def get_layer_nums(layer_nums, orig_base_model):
     try:
         config = orig_base_model.config
     except Exception as e:
-        config = orig_base_model.llm_engine.model_config.hf_config
+        try:
+            config = orig_base_model.model.config
+        except Exception as e:
+            config = orig_base_model.llm_engine.model_config.hf_config
     n_layers = config.num_hidden_layers
     if layer_nums == 'all':
         return list(range(config.num_hidden_layers))

@@ -9,7 +9,10 @@ class FeatureExtractorBasicHiddenStates(FeatureExtractorBase):
         try:
             config = orig_base_model.config
         except Exception as e:
-            config = orig_base_model.llm_engine.model_config.hf_config
+            try:
+                config = orig_base_model.model.config
+            except Exception as e:
+                config = orig_base_model.llm_engine.model_config.hf_config
         self._layer_nums = get_layer_nums(layer_nums, orig_base_model)
         self._feature_dim = config.hidden_size * len(self._layer_nums)
 

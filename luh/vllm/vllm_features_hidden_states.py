@@ -28,7 +28,10 @@ class VLLMHiddenStates(StatCalculator):
         if isinstance(x, np.ndarray):
             return x
         if torch.is_tensor(x):
-            return x.detach().cpu().numpy()
+            t = x.detach().cpu()
+            if t.dtype == torch.bfloat16:
+                t = t.float()  # float32
+            return t.numpy()
         return np.asarray(x)
 
     def _normalize_samples(self, hs_out):

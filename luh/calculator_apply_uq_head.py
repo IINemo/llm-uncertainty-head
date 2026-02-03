@@ -29,7 +29,7 @@ class CalculatorApplyUQHead(StatCalculator):
         dependencies: Dict[str, np.array],
         texts: List[str],
         model: Model,
-        max_new_tokens: int,
+        max_new_tokens: int = 100,
         **kwargs,
     ) -> Dict[str, np.ndarray]:
         batch = dependencies["llm_inputs"]

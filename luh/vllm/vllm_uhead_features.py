@@ -1,7 +1,12 @@
 import torch
 from lm_polygraph.stat_calculators import StatCalculator
+from transformers import AutoModelForCausalLM
+
 from luh import AutoUncertaintyHead
 from lm_polygraph.stat_calculators.extract_claims import Claim
+from lm_polygraph import WhiteboxModel
+
+from .hf_features_hidden_states import HFHiddenStatesFromVLLM
 from .vllm_features_token_probs import VLLMTokenProbabilities
 from .vllm_features_hidden_states import VLLMHiddenStates
 from luh.feature_extractors.combined import FeatureExtractorCombined
@@ -12,6 +17,8 @@ from luh.feature_extractors.basic_hidden_states import FeatureExtractorBasicHidd
 class VLLMUncertaintyHeadFeatures(StatCalculator):
     def __init__(self, uhead: AutoUncertaintyHead, **hs_generator_kwargs):
         super().__init__()
+        hs_type = hs_generator_kwargs["type"]
+        hs_generator_kwargs.pop("type")
         self.hs_generator_kwargs = hs_generator_kwargs
         feature_extractor = getattr(uhead, "feature_extractor")
         if isinstance(feature_extractor, FeatureExtractorCombined):
@@ -25,21 +32,32 @@ class VLLMUncertaintyHeadFeatures(StatCalculator):
         self._hs_layer_ids: list[int] | None = None
 
         self.n_logprobs = 0
+        self.prompt_logprobs = False
+        self.output_hidden_states = False
 
         for fe in feature_extractors:
             if isinstance(fe, FeatureExtractorTokenProbabilities):
                 ext = VLLMTokenProbabilities(top_n=fe.top_n)
                 self.vllm_feature_extractors.append(("vllm_token_probs", ext))
                 self.n_logprobs = max(self.n_logprobs, ext.top_n)
+                self.prompt_logprobs = True
 
             elif isinstance(fe, FeatureExtractorBasicHiddenStates):
                 # fe._layer_nums are actual model layers (e.g., [2,10,20] or [-1] resolved)
                 self._hs_layer_ids = list(fe._layer_nums)
 
-                # Stat calculator selects among RETURNED layers.
-                # If you want ALL returned layers in the same order:
-                layer_selection = list(range(len(self._hs_layer_ids)))
-                ext = VLLMHiddenStates(layer_nums=layer_selection)
+                if hs_type == "vllm":
+                    # Stat calculator selects among RETURNED layers.
+                    # If you want ALL returned layers in the same order:
+                    layer_selection = list(range(len(self._hs_layer_ids)))
+                    ext = VLLMHiddenStates(layer_nums=layer_selection)
+                    self.output_hidden_states = True
+                elif hs_type == "hf":
+                    base_model = WhiteboxModel.from_pretrained(
+                        hs_generator_kwargs["model_path"],
+                        device_map=hs_generator_kwargs["device"],
+                    )
+                    ext = HFHiddenStatesFromVLLM(base_model, layer_nums=self._hs_layer_ids)
 
                 self.vllm_feature_extractors.append(("vllm_hidden_states", ext))
 
@@ -53,9 +71,10 @@ class VLLMUncertaintyHeadFeatures(StatCalculator):
     def vllm_with_uncertainty_arguments(self) -> dict:
         return {
             "n_logprobs": self.n_logprobs,
-            "output_hidden_states": self._hs_layer_ids is not None,
+            "output_hidden_states": self.output_hidden_states,
             "hs_layer_ids": self._hs_layer_ids,
             "hs_generator_kwargs": self.hs_generator_kwargs,
+            "prompt_logprobs": self.prompt_logprobs,
         }
 
     def _completion_samples_from_output(self, output):
@@ -97,7 +116,7 @@ class VLLMUncertaintyHeadFeatures(StatCalculator):
 
         # Combine features: concatenate on last dim (B, T, *)
         if len(all_feats) == 1:
-            combined = torch.FloatTensor(all_feats[0])
+            combined = all_feats[0]
         else:
             combined = torch.cat(all_feats, dim=-1)
 
@@ -106,7 +125,4 @@ class VLLMUncertaintyHeadFeatures(StatCalculator):
             "input_ids": [None for _ in range(len(combined))],
             "context_lenghts": dependencies["context_lenghts"],
         }
-        dependencies["claims"] = [[
-            Claim(claim_text=None, sentence=None, aligned_token_ids=list(range(len(m.token_ids) - 1)))
-        ] for m in self._completion_samples_from_output(dependencies["vllm_output"])]
         return dependencies
