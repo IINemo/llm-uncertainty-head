@@ -3,7 +3,7 @@ hydra:
     dir: ${output_dir}/${now:%Y-%m-%d}/${now:%H-%M-%S}
 
 model:
-  pretrained_model_name_or_path: Qwen/Qwen2.5-VL-3B-Instruct
+  pretrained_model_name_or_path: google/gemma-3-12b-it
   device_map: auto
   trust_remote_code: true
   torch_dtype: torch.bfloat16
@@ -31,20 +31,20 @@ ue_layer:
       dropout: 0.1
 
 dataset:
-  path: hf:ArtemVazhentsev21/akimbio_with_white_images
+  path: hf:nhatkhangdtp/uncertainty-vlm-gemma
   num_instances: 0
   test_size: 0.0
   validation: test
-  image_column: images  # Column name containing images
+  image_column: image  # Column name containing images
 
 training_arguments:
   num_train_epochs: 10
   learning_rate: 0.0001
   warmup_ratio: 0.05
   weight_decay: 0.1
-  gradient_accumulation_steps: 1
-  per_device_train_batch_size: 16  # Smaller batch size for VLMs due to image memory
-  per_device_eval_batch_size: 100  # Smaller batch size for VLMs due to image memory
+  gradient_accumulation_steps: 2
+  per_device_train_batch_size: 4  # Smaller batch size for VLMs due to image memory
+  per_device_eval_batch_size: 100
   max_grad_norm: 1.0
 
 do_train: true

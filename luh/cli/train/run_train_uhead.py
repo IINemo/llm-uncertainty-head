@@ -201,6 +201,7 @@ def load_data(config, tokenizer, processor=None):
     image_column = getattr(config.dataset, 'image_column', 'images')
 
     tokenized_data = dataset["train"] if config.do_train else Dataset.from_dict({})
+    # tokenized_data = tokenized_data.select(list(range(100)))
 
     if config.dataset.validation not in dataset:
         log.info("Performing train-test split...")
@@ -212,6 +213,7 @@ def load_data(config, tokenizer, processor=None):
         val_dataset_name = config.dataset.validation if hasattr(config.dataset, "validation") else "eval"
         #test_dataset = dataset[val_dataset_name].select(range(config.dataset.test_size))
         test_dataset = dataset[val_dataset_name]
+        # test_dataset = test_dataset.select(list(range(100)))
         tokenized_data = DatasetDict({"train": tokenized_data, "test": test_dataset})
 
     def prompt_tokens(inst):
@@ -219,10 +221,64 @@ def load_data(config, tokenizer, processor=None):
 
     tokenized_data = tokenized_data.map(prompt_tokens)
 
-    # For VLMs, ensure images are preserved in the dataset
-    if is_vlm and image_column in tokenized_data['train'].features:
-        log.info(f"VLM mode: preserving image column '{image_column}' in dataset")
-        # Images will be processed by the data collator during batching
+    # For VLMs, re-tokenize input_ids with processor to add image tokens
+    if is_vlm and image_column in tokenized_data['train'].features and processor is not None:
+        log.info("VLM mode: re-tokenizing input_ids with processor to add image tokens")
+
+        def vlm_retokenize(inst):
+            # Build messages with images for both prompt and response
+            prompt_content = []
+            if image_column in inst and inst[image_column]:
+                images = inst[image_column]
+                if isinstance(images, list):
+                    for img in images:
+                        prompt_content.append({"type": "image", "image": img})
+                else:
+                    prompt_content.append({"type": "image", "image": images})
+            prompt_content.append({"type": "text", "text": inst["question"]})
+
+            prompt_messages = [{"role": "user", "content": prompt_content}]
+
+            # Tokenize prompt with images
+            prompt_inputs = processor.apply_chat_template(
+                prompt_messages,
+                tokenize=True,
+                add_generation_prompt=True,
+                return_dict=True,
+                return_tensors="pt",
+            )
+            prompt_ids = prompt_inputs["input_ids"].squeeze(0)
+
+            # Tokenize response (answer) separately
+            # Get reply text from input_ids by subtracting prompt length
+            # Original input_ids were tokenized without images, so we need the actual reply text
+            reply_text = inst.get("reply", "")
+            if reply_text:
+                # Add model role message (content must be list of dicts for VLM)
+                response_messages = prompt_messages + [{"role": "assistant", "content": [{"type": "text", "text": reply_text}]}]
+                full_inputs = processor.apply_chat_template(
+                    response_messages,
+                    tokenize=True,
+                    add_generation_prompt=False,
+                    return_dict=True,
+                    return_tensors="pt",
+                )
+                result = {
+                    "input_ids": full_inputs["input_ids"].squeeze(0).tolist(),
+                    "prompt_tokens": prompt_ids.tolist(),  # New prompt with image tokens
+                }
+                # Note: pixel_values will be processed on-the-fly in data collator to avoid Arrow overflow
+            else:
+                # No reply, just use prompt
+                result = {
+                    "input_ids": prompt_ids.tolist(),
+                    "prompt_tokens": prompt_ids.tolist(),
+                }
+                # Note: pixel_values will be processed on-the-fly in data collator
+
+            return result
+
+        tokenized_data = tokenized_data.map(vlm_retokenize, desc="Re-tokenizing VLM inputs")
 
     log.info(f"Length of the training dataset: {len(tokenized_data['train'])}")
     log.info(f"Length of the testing dataset: {len(tokenized_data['test'])}")
@@ -442,8 +498,8 @@ class DataCollatorForVLMWithUncertaintyClaim(DataCollatorForLanguageModeling):
                     pixel_values_list.append(processed.pixel_values)
 
                 # Stack pixel values for the batch
-                # Note: Qwen2.5-VL may have different shapes, so we handle them separately
-                batch["pixel_values"] = pixel_values_list
+                # For Gemma3 and similar VLMs, concatenate along batch dimension
+                batch["pixel_values"] = torch.cat(pixel_values_list, dim=0)
             else:
                 # Fallback: try to use images directly if they're already tensors
                 batch["pixel_values"] = [e.get("pixel_values") for e in examples]
