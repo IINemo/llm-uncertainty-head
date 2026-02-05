@@ -201,7 +201,6 @@ def load_data(config, tokenizer, processor=None):
     image_column = getattr(config.dataset, 'image_column', 'images')
 
     tokenized_data = dataset["train"] if config.do_train else Dataset.from_dict({})
-    # tokenized_data = tokenized_data.select(list(range(100)))
 
     if config.dataset.validation not in dataset:
         log.info("Performing train-test split...")
@@ -213,13 +212,7 @@ def load_data(config, tokenizer, processor=None):
         val_dataset_name = config.dataset.validation if hasattr(config.dataset, "validation") else "eval"
         #test_dataset = dataset[val_dataset_name].select(range(config.dataset.test_size))
         test_dataset = dataset[val_dataset_name]
-        # test_dataset = test_dataset.select(list(range(100)))
         tokenized_data = DatasetDict({"train": tokenized_data, "test": test_dataset})
-
-    def prompt_tokens(inst):
-        return {"prompt_tokens": tokenizer.apply_chat_template([{"role": "user", "content": inst["question"]}], add_generation_prompt=True)}
-
-    tokenized_data = tokenized_data.map(prompt_tokens)
 
     # For VLMs, re-tokenize input_ids with processor to add image tokens
     if is_vlm and image_column in tokenized_data['train'].features and processor is not None:
@@ -247,38 +240,17 @@ def load_data(config, tokenizer, processor=None):
                 return_dict=True,
                 return_tensors="pt",
             )
-            prompt_ids = prompt_inputs["input_ids"].squeeze(0)
-
-            # Tokenize response (answer) separately
-            # Get reply text from input_ids by subtracting prompt length
-            # Original input_ids were tokenized without images, so we need the actual reply text
-            reply_text = inst.get("reply", "")
-            if reply_text:
-                # Add model role message (content must be list of dicts for VLM)
-                response_messages = prompt_messages + [{"role": "assistant", "content": [{"type": "text", "text": reply_text}]}]
-                full_inputs = processor.apply_chat_template(
-                    response_messages,
-                    tokenize=True,
-                    add_generation_prompt=False,
-                    return_dict=True,
-                    return_tensors="pt",
-                )
-                result = {
-                    "input_ids": full_inputs["input_ids"].squeeze(0).tolist(),
-                    "prompt_tokens": prompt_ids.tolist(),  # New prompt with image tokens
-                }
-                # Note: pixel_values will be processed on-the-fly in data collator to avoid Arrow overflow
-            else:
-                # No reply, just use prompt
-                result = {
-                    "input_ids": prompt_ids.tolist(),
-                    "prompt_tokens": prompt_ids.tolist(),
-                }
-                # Note: pixel_values will be processed on-the-fly in data collator
-
+            result = {
+                "prompt_tokens": prompt_inputs["input_ids"].squeeze(0).tolist(),
+            }
             return result
 
         tokenized_data = tokenized_data.map(vlm_retokenize, desc="Re-tokenizing VLM inputs")
+    else:
+        def prompt_tokens(inst):
+            return {"prompt_tokens": tokenizer.apply_chat_template([{"role": "user", "content": inst["question"]}], add_generation_prompt=True)}
+
+        tokenized_data = tokenized_data.map(prompt_tokens)
 
     log.info(f"Length of the training dataset: {len(tokenized_data['train'])}")
     log.info(f"Length of the testing dataset: {len(tokenized_data['test'])}")
@@ -842,7 +814,7 @@ def main(config):
     train_args = TrainingArguments(
         num_train_epochs=config.training_arguments.num_train_epochs,
         per_device_train_batch_size=config.training_arguments.per_device_train_batch_size,
-        per_device_eval_batch_size=config.training_arguments.per_device_train_batch_size, # TODO: add parameter for eval batch size
+        per_device_eval_batch_size=config.training_arguments.per_device_eval_batch_size,
         gradient_accumulation_steps=config.training_arguments.gradient_accumulation_steps,
         eval_accumulation_steps=4,
         learning_rate=config.training_arguments.learning_rate,
