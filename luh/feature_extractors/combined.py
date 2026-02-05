@@ -1,5 +1,6 @@
 import torch
 import time
+import warnings
 
 from .feature_extractor_base import FeatureExtractorBase
 
@@ -19,8 +20,11 @@ class FeatureExtractorCombined(FeatureExtractorBase):
             start_time = time.time()
 
             new_features = feature_extractor(llm_inputs, llm_outputs)
-            if torch.isnan(new_features).sum() != 0:
-                raise Exception(f'Found nans in features from {feature_extractor}: {new_features}')
+            nan_count = torch.isnan(new_features).sum()
+            if nan_count != 0:
+                nan_percentage = 100 * nan_count / new_features.numel()
+                warnings.warn(f'Found nans in features from {feature_extractor}: {nan_count} ({nan_percentage:.2f}%), filling with zeros')
+                new_features = torch.nan_to_num(new_features, nan=0.0)
             features.append(new_features)
             log.debug(f"Done extracting {feature_extractor} in {round(time.time() - start_time, 2)} seconds")
 
