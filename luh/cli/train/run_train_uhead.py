@@ -24,7 +24,7 @@ import torch.nn.init as init
 from datasets import DatasetDict, Dataset
 from transformers import (
     AutoModelForCausalLM,
-    AutoModelForVision2Seq,
+    AutoModelForImageTextToText,
     AutoTokenizer,
     AutoProcessor,
     DataCollatorForLanguageModeling,
@@ -75,6 +75,7 @@ def load_processor(config):
             config.model.pretrained_model_name_or_path,
             cache_dir=getattr(config, 'hf_cache', None),
             token=getattr(config, 'hf_token', None),
+            padding_side="left",
             trust_remote_code=True,
         )
         # Set pad token if not set
@@ -100,7 +101,7 @@ def load_model(config):
     if is_vlm:
         log.info("Loading as Vision-Language Model (VLM)")
         try:
-            base_model = AutoModelForVision2Seq.from_pretrained(
+            base_model = AutoModelForImageTextToText.from_pretrained(
                 config.model.pretrained_model_name_or_path,
                 torch_dtype=config.model.torch_dtype,
                 trust_remote_code=True,
@@ -110,11 +111,11 @@ def load_model(config):
                 attn_implementation="eager",
                 low_cpu_mem_usage=True,
             )
-            log.info("Loaded using AutoModelForVision2Seq")
+            log.info("Loaded using AutoModelForImageTextToText")
         except ValueError as e:
-            # Some VLMs (like Gemma3) are not supported by AutoModelForVision2Seq
+            # Some VLMs are not supported by AutoModelForImageTextToText
             # Fall back to AutoModelForCausalLM with trust_remote_code
-            log.warning(f"AutoModelForVision2Seq failed: {e}")
+            log.warning(f"AutoModelForImageTextToText failed: {e}")
             log.info("Falling back to AutoModelForCausalLM with trust_remote_code=True")
             base_model = AutoModelForCausalLM.from_pretrained(
                 config.model.pretrained_model_name_or_path,
@@ -452,31 +453,27 @@ class DataCollatorForVLMWithUncertaintyClaim(DataCollatorForLanguageModeling):
         all_labels = []
         for i in range(len(batch["input_ids"])):
             instance_claims = []
-            instance_labels = []
-            for claim_idx, claim in enumerate(examples[i]["claims"]):
-                claim_token_positions = self._adjust_claim_positions(
-                    batch["context_lengths"][i], batch["input_ids"][i], claim
-                )
-                # Skip claims with no valid positions (can happen with VLM vision tokens)
-                if len(claim_token_positions) == 0:
-                    continue
-
+            for claim in examples[i]["claims"]:
                 mask = torch.zeros(batch["input_ids"][i].shape, dtype=int)
-                # Clip positions to be within bounds
-                claim_token_positions = torch.clamp(claim_token_positions, 0, mask.shape[0] - 1)
-                mask[claim_token_positions] = 1
-                instance_claims.append(mask[1:])  # ignoring <s>
-                # Keep the corresponding verified label
-                instance_labels.append(examples[i]["verified"][claim_idx])
+                claim_token_positions = self._adjust_claim_positions(batch["context_lengths"][i], batch["input_ids"][i], claim)
+                if any(e > mask.shape[0] for e in claim_token_positions):
+                    print("Error")
 
-            all_claim_tensors.append(
-                torch.stack(instance_claims) if len(instance_claims) > 0
-                else torch.zeros(0, batch["input_ids"][i].shape[0] - 1, dtype=int)
-            )
-            # Filter labels to match filtered claims
-            all_labels.append([e if not np.isnan(e) else -100 for e in instance_labels])
+                # print("Claim token positions:", claim_token_positions)
+                mask[claim_token_positions] = 1
+                instance_claims.append(mask[1:]) # ignoring <s>
+
+            all_claim_tensors.append(torch.stack(instance_claims) if len(instance_claims) > 0 else torch.zeros(0, batch["input_ids"][i].shape[0] - 1, dtype=int))
 
         batch["claims"] = all_claim_tensors
+
+
+        # Construct labels
+        all_labels = []
+        for i in range(len(examples)):
+            uncertainty_labels = examples[i]["verified"]
+            all_labels.append([e if not np.isnan(e) else -100 for e in uncertainty_labels])
+
         batch["verified"] = all_labels
 
         return dict(batch)

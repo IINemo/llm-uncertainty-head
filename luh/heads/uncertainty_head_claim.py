@@ -28,6 +28,7 @@ class UncertaintyHeadClaim(UncertaintyHeadBase):
         log.info(f"Feature size: {feature_extractor.feature_dim()}")
 
         self.proj = nn.Sequential(
+                nn.LayerNorm(feature_extractor.feature_dim()),  # Normalize input features first
                 nn.Linear(feature_extractor.feature_dim(), head_dim * 2),
                 nn.LayerNorm(head_dim * 2),
                 nn.GELU(),

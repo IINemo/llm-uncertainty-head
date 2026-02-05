@@ -25,6 +25,7 @@ class FeatureExtractorTokenProbabilities(FeatureExtractorBase):
         :param attention_mask: Optional attention mask to ignore padding tokens, shape (sequence_length,).
         :return: Token-level probabilities (sequence_length x vocab_size).
         """
+        logits = torch.nan_to_num(logits, nan=-1e4, posinf=1e4, neginf=-1e4)
         mask = logits.sum(dim=-1) != 0.
         top_probas = torch.zeros(*logits.shape[:-1], self.top_n, device=logits.device, dtype=logits.dtype)
         

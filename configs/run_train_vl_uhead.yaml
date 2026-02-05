@@ -6,7 +6,7 @@ model:
   pretrained_model_name_or_path: Qwen/Qwen2.5-VL-3B-Instruct
   device_map: auto
   trust_remote_code: true
-  torch_dtype: torch.float16
+  torch_dtype: torch.bfloat16
   is_vlm: true  # Set to true for Vision-Language Models
 
 ue_layer:
@@ -20,6 +20,10 @@ ue_layer:
       layer_nums: all
     - name: luh.feature_extractors.token_probabilities
       top_n: 4
+    - name: luh.feature_extractors.basic_attention
+      layer_nums: all
+      attn_history_sz: 3
+      pool: false
     uncertainty_head:
       head_dim: 768
       n_layers: 2
@@ -39,14 +43,15 @@ training_arguments:
   warmup_ratio: 0.05
   weight_decay: 0.1
   gradient_accumulation_steps: 1
-  per_device_train_batch_size: 4  # Smaller batch size for VLMs due to image memory
+  per_device_train_batch_size: 16  # Smaller batch size for VLMs due to image memory
+  per_device_eval_batch_size: 100  # Smaller batch size for VLMs due to image memory
   max_grad_norm: 1.0
 
 do_train: true
 do_eval: true
 do_hyperopt: false
-do_save_checkpoints: true
-do_save_final_model: true
+do_save_checkpoints: false
+do_save_final_model: false
 report_to: none
 output_dir: ./workdir/train_vl
 do_predict: false
