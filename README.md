@@ -88,13 +88,10 @@ The library also supports training uncertainty heads for Vision-Language Models 
 2. Specify the `dataset.image_column` containing images (default: "images")
 3. Use a dataset with pre-tokenized inputs and image data
 
-**Example: Training with Qwen2.5-VL-3B-Instruct**
+**Example: Training with google/gemma-3-12b-it on nhatkhangdtp/uncertainty-vlm-gemma**
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 HYDRA_CONFIG=/home/artem.vazhentsev/llm-uncertainty-head/configs/run_train_vl_uhead.yaml \
-    python -m luh.cli.train.run_train_uhead \
-    model.pretrained_model_name_or_path=Qwen/Qwen2.5-VL-3B-Instruct \
-    dataset.path=hf:ArtemVazhentsev21/akimbio_with_white_images
+CUDA_VISIBLE_DEVICES=0,1 HYDRA_CONFIG=./configs/run_train_vl_uhead.yaml python -m luh.cli.train.run_train_uhead 
 ```
 
 The VLM training automatically:
@@ -110,7 +107,7 @@ The VLM training automatically:
 
 **VLM Configuration Options:**
 - `model.is_vlm`: Set to `true` to enable VLM mode
-- `dataset.image_column`: Column name containing images in the dataset (default: "images")
+- `dataset.image_column`: Column name containing images in the dataset (default: "image")
 - `training_arguments.per_device_train_batch_size`: Typically smaller for VLMs (e.g., 4 instead of 32)
 
 ## Cite
