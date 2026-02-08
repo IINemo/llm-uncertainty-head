@@ -38,12 +38,12 @@ dataset:
   image_column: image  # Column name containing images
 
 training_arguments:
-  num_train_epochs: 10
-  learning_rate: 0.0001
+  num_train_epochs: 20
+  learning_rate: 0.00002
   warmup_ratio: 0.05
   weight_decay: 0.1
-  gradient_accumulation_steps: 1
-  per_device_train_batch_size: 4  # Smaller batch size for VLMs due to image memory
+  gradient_accumulation_steps: 8
+  per_device_train_batch_size: 2  # Smaller batch size for VLMs due to image memory
   per_device_eval_batch_size: 2 
   max_grad_norm: 1.0
 
@@ -51,7 +51,7 @@ do_train: true
 do_eval: true
 do_hyperopt: false
 do_save_checkpoints: false
-do_save_final_model: false
-report_to: none
+do_save_final_model: true
+report_to: wandb
 output_dir: ./workdir/train_vl
 do_predict: false
