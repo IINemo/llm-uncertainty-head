@@ -5,8 +5,8 @@ from datasets import load_dataset, load_from_disk, concatenate_datasets, Sequenc
 from collections.abc import Mapping
 
 
-def load_feature_extractor(config, base_model):
-    return luh.feature_extractors.combined.load_extractor(config, base_model)
+def load_feature_extractor(config, base_model, sanitize=False):
+    return luh.feature_extractors.combined.load_extractor(config, base_model, sanitize=sanitize)
 
 
 def load_any_dataset(dataset_path, args):

@@ -10,6 +10,7 @@ from .utils import load_feature_extractor
 from huggingface_hub import hf_hub_download
 from omegaconf import OmegaConf
 import os
+import inspect
 
 
 class AutoUncertaintyHead:
@@ -56,15 +57,25 @@ class AutoUncertaintyHead:
     @classmethod
     def from_config(cls, config, base_model):
         uq_head_type = cls.MODEL_MAPPING[config.head_type]
-        
+
+        # Get sanitize parameter from config (default to True for backwards compatibility)
+        sanitize = getattr(config, 'sanitize', True)
+
         feature_extractor = load_feature_extractor(
-            config.feature_extractor, base_model
+            config.feature_extractor, base_model, sanitize=sanitize
         )
         ue_head_cfg = dict() if config.uncertainty_head is None else config.uncertainty_head
+
+        # Check if the head accepts 'sanitize' parameter
+        init_signature = inspect.signature(uq_head_type.__init__)
+        kwargs = {'cfg': config}
+        if 'sanitize' in init_signature.parameters:
+            kwargs['sanitize'] = sanitize
+
         uq_head = uq_head_type(
             feature_extractor,
-            cfg=config,
             **ue_head_cfg,
+            **kwargs,
         )
 
         return uq_head

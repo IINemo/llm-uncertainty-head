@@ -814,7 +814,11 @@ def main(config):
     train_args = TrainingArguments(
         num_train_epochs=config.training_arguments.num_train_epochs,
         per_device_train_batch_size=config.training_arguments.per_device_train_batch_size,
-        per_device_eval_batch_size=config.training_arguments.per_device_eval_batch_size,
+        per_device_eval_batch_size=getattr(
+            config.training_arguments,
+            "per_device_eval_batch_size",
+            config.training_arguments.per_device_train_batch_size,
+        ),
         gradient_accumulation_steps=config.training_arguments.gradient_accumulation_steps,
         eval_accumulation_steps=4,
         learning_rate=config.training_arguments.learning_rate,
