@@ -145,7 +145,7 @@ class CalculatorInferLuh(StatCalculator):
 
 
         out["context_lengths"] = torch.tensor([len(it) for it in input_batch["input_ids"]])
-        combined_batch["context_lenghts"] = out["context_lengths"]
+        combined_batch["context_lengths"] = out["context_lengths"]
 
         if self.predict_token_uncertainties:
             uncertainty_logits = self.uncertainty_head(combined_batch, out)
@@ -298,7 +298,7 @@ class CalculatorInferLuh(StatCalculator):
 
         out["full_attention_mask"] = full_attn_mask
         out["context_lengths"] = torch.tensor([len(it) for it in batch["input_ids"]])
-        batch["context_lenghts"] = out["context_lengths"]
+        batch["context_lengths"] = out["context_lengths"]
         if self.predict_token_uncertainties:
             with torch.no_grad():
                 uncertainty_logits = self.uncertainty_head(batch, out)
