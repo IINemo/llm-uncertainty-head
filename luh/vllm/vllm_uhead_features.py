@@ -6,7 +6,6 @@ from luh import AutoUncertaintyHead
 from lm_polygraph.stat_calculators.extract_claims import Claim
 from lm_polygraph import WhiteboxModel
 
-from .hf_features_hidden_states import HFHiddenStatesFromVLLM
 from .vllm_features_token_probs import VLLMTokenProbabilities
 from .vllm_features_hidden_states import VLLMHiddenStates
 from luh.feature_extractors.combined import FeatureExtractorCombined
@@ -17,8 +16,6 @@ from luh.feature_extractors.basic_hidden_states import FeatureExtractorBasicHidd
 class VLLMUncertaintyHeadFeatures(StatCalculator):
     def __init__(self, uhead: AutoUncertaintyHead, **hs_generator_kwargs):
         super().__init__()
-        hs_type = hs_generator_kwargs["type"]
-        hs_generator_kwargs.pop("type")
         self.hs_generator_kwargs = hs_generator_kwargs
         feature_extractor = getattr(uhead, "feature_extractor")
         if isinstance(feature_extractor, FeatureExtractorCombined):
@@ -46,18 +43,11 @@ class VLLMUncertaintyHeadFeatures(StatCalculator):
                 # fe._layer_nums are actual model layers (e.g., [2,10,20] or [-1] resolved)
                 self._hs_layer_ids = list(fe._layer_nums)
 
-                if hs_type == "vllm":
-                    # Stat calculator selects among RETURNED layers.
-                    # If you want ALL returned layers in the same order:
-                    layer_selection = list(range(len(self._hs_layer_ids)))
-                    ext = VLLMHiddenStates(layer_nums=layer_selection)
-                    self.output_hidden_states = True
-                elif hs_type == "hf":
-                    base_model = WhiteboxModel.from_pretrained(
-                        hs_generator_kwargs["model_path"],
-                        device_map=hs_generator_kwargs["device"],
-                    )
-                    ext = HFHiddenStatesFromVLLM(base_model, layer_nums=self._hs_layer_ids)
+                # Stat calculator selects among RETURNED layers.
+                # If you want ALL returned layers in the same order:
+                layer_selection = list(range(len(self._hs_layer_ids)))
+                ext = VLLMHiddenStates(layer_nums=layer_selection)
+                self.output_hidden_states = True
 
                 self.vllm_feature_extractors.append(("vllm_hidden_states", ext))
 
@@ -96,6 +86,9 @@ class VLLMUncertaintyHeadFeatures(StatCalculator):
 
 
     def __call__(self, dependencies, texts, model, max_new_tokens: int = 100, **kwargs):
+        if all(key in dependencies for key in ["uhead_features", "context_lengths", "llm_inputs"]):
+            return dependencies
+
         import numpy as np
 
         all_feats = []
@@ -120,9 +113,15 @@ class VLLMUncertaintyHeadFeatures(StatCalculator):
         else:
             combined = torch.cat(all_feats, dim=-1)
 
+        if "claims" not in dependencies:
+            dependencies["claims"] = [[Claim(
+                None, None,
+                list(range(len(dependencies["token_ids"]))),
+            )]]
+
         dependencies["uhead_features"] = combined
         dependencies["llm_inputs"] = {
             "input_ids": [None for _ in range(len(combined))],
-            "context_lenghts": dependencies["context_lenghts"],
+            "context_lengths": dependencies["context_lengths"],
         }
         return dependencies

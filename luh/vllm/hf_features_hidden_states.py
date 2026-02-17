@@ -112,7 +112,7 @@ class HFHiddenStatesFromVLLM(StatCalculator):
             # LM-style alignment
             "vllm_hidden_states": hidden_states,
             "full_attention_mask": attention_mask,
-            "context_lenghts": torch.tensor(context_lengths, dtype=torch.long),
+            "context_lengths": torch.tensor(context_lengths, dtype=torch.long),
             "greedy_texts": greedy_texts,
             "greedy_tokens": greedy_tokens,
         }

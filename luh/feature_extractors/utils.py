@@ -25,8 +25,15 @@ def get_layer_nums(layer_nums, orig_base_model):
 
 
 def get_head_nums(head_nums, layer_nums, orig_base_model):
+    try:
+        config = orig_base_model.config
+    except Exception as e:
+        try:
+            config = orig_base_model.model.config
+        except Exception as e:
+            config = orig_base_model.llm_engine.model_config.hf_config
     if head_nums == 'all':
-        all_heads = list(range(orig_base_model.config.num_attention_heads))
+        all_heads = list(range(config.num_attention_heads))
         return {l: all_heads for l in layer_nums}
     elif isinstance(head_nums, dict):
         heads: dict[int, list[int]] = {}  # list of heads for each layer
