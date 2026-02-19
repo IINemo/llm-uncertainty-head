@@ -41,7 +41,8 @@ class VLLMUncertaintyHeadFeatures(StatCalculator):
 
             elif isinstance(fe, FeatureExtractorBasicHiddenStates):
                 # fe._layer_nums are actual model layers (e.g., [2,10,20] or [-1] resolved)
-                self._hs_layer_ids = list(fe._layer_nums)
+                # Head#i in HF corresponds to head#(i-1) in vllm
+                self._hs_layer_ids = [x - 1 for x in fe._layer_nums]
 
                 # Stat calculator selects among RETURNED layers.
                 # If you want ALL returned layers in the same order:
