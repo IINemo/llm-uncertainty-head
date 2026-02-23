@@ -15,6 +15,7 @@ ue_layer:
   output_attention: true
   head_cfg:
     head_type: claim
+    sanitize: true  # If true, sanitize NaNs/Infs in features; if false, raise exception
     feature_extractor:
     - name: luh.feature_extractors.basic_hidden_states
       layer_nums: all
