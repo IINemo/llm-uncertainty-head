@@ -38,7 +38,7 @@ dataset:
   image_column: image  # Column name containing images
 
 training_arguments:
-  num_train_epochs: 20
+  num_train_epochs: 10
   learning_rate: 0.00002
   warmup_ratio: 0.05
   weight_decay: 0.1
@@ -52,6 +52,6 @@ do_eval: true
 do_hyperopt: false
 do_save_checkpoints: false
 do_save_final_model: true
-report_to: wandb
+report_to: none
 output_dir: ./workdir/train_vl
 do_predict: false

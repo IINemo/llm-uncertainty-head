@@ -1,6 +1,7 @@
 from .heads.saplma_head import SaplmaHead
 from .heads.uncertainty_head import UncertaintyHead
 from .heads.uncertainty_head_claim import UncertaintyHeadClaim
+from .heads.uncertainty_head_claim_first_token import UncertaintyHeadClaimFirstToken
 from .heads.linear_head import LinearHead
 from .heads.linear_head_claim import LinearHeadClaim
 from .heads.mlp_head_claim import MLPClaimHead
@@ -19,6 +20,7 @@ class AutoUncertaintyHead:
         "saplma": SaplmaHead,
         DEFAULT_MODEL_TYPE: UncertaintyHead,
         "claim": UncertaintyHeadClaim,
+        "claim_first_token": UncertaintyHeadClaimFirstToken,
         "linear": LinearHead,
         "linear_claim": LinearHeadClaim,
         "mlp_claim": MLPClaimHead,
